@@ -22,6 +22,8 @@
   (https://www.st.com/en/development-tools/stm32cubemx.html).
 * System Workbench for STM32 - IDE среда разработки ПО для микроконтроллеров семейства STM32
   (https://www.st.com/en/development-tools/sw4stm32.html).
+* Saleae USB Logic 8ch - логический анализатор сигналов, 8 каналов , макс. частота дискретизации 24МГц
+  (https://www.saleae.com/ru/downloads/)
 ```
 
 
