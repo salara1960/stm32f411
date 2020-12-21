@@ -16,6 +16,13 @@
   *
   ******************************************************************************
   */
+
+// default step
+//arm-none-eabi-objcopy -O ihex "${BuildArtifactFileBaseName}.elf" "${BuildArtifactFileBaseName}.hex" && arm-none-eabi-size "${BuildArtifactFileName}"
+//
+// my step
+//arm-none-eabi-objcopy -O ihex "${BuildArtifactFileBaseName}.elf" "${BuildArtifactFileBaseName}.hex" && arm-none-eabi-objcopy -O binary "${BuildArtifactFileBaseName}.elf" "${BuildArtifactFileBaseName}.bin" && ls -la | grep "${BuildArtifactFileBaseName}.*"
+
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
@@ -105,7 +112,7 @@ uint8_t max_evt = 0;
 
 volatile uint32_t tik = 0;
 //volatile uint8_t mktik = 0;
-volatile time_t epoch = 1607791830;
+volatile time_t epoch = 1608553951;
 uint8_t tZone = 0;//GMT
 volatile uint8_t setDate = 0;
 char rxData[MAX_TMP_SIZE] = {0};
@@ -154,6 +161,10 @@ uint8_t CompValCounter = 0;
 
 volatile uint8_t devError = 0;
 
+#ifdef MIC_PRESENT
+	volatile uint8_t enEXT3 = 1;
+	uint32_t tmrEXT3 = 0;
+#endif
 
 /* USER CODE END PV */
 
@@ -308,6 +319,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		devError = devOK;
 		putMsg(msg_out);
 	}
+#ifdef MIC_PRESENT
+	else if (GPIO_Pin == MIC_DIG_Pin) {
+		if (enEXT3) {
+			enEXT3 = 0;
+			HAL_GPIO_TogglePin(bLED_GPIO_Port, bLED_Pin);
+			putMsg(msg_out);
+			tmrEXT3 = get5ms(_500ms);
+		}
+	}
+#endif
 }
 //-----------------------------------------------------------------------------
 #if defined(SET_BMx280) || defined(SET_COMPAS)
@@ -544,6 +565,7 @@ int main(void)
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
 
+
 #ifdef SET_OLED_SPI
     portOLED = &hspi4;
     spi_ssd1306_Reset();
@@ -622,6 +644,14 @@ int main(void)
 		    		if (startADC) HAL_ADC_Start_IT(portADC);
 		    		if (devError) ON_ERR_LED()
 		    		         else OFF_ERR_LED()
+#ifdef MIC_PRESENT
+					if (tmrEXT3) {
+						if (chk5ms(tmrEXT3)) {
+							enEXT3 = 1;
+							tmrEXT3 = 0;
+						}
+					}
+#endif
 		    	}
 #ifdef SET_OLED_SPI
 		    	if (!(schMS % (_250ms))) {// 250ms
@@ -1226,16 +1256,32 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(bLED_GPIO_Port, bLED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|STROB_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, tLED_Pin|ERR_LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : bLED_Pin */
+  GPIO_InitStruct.Pin = bLED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(bLED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : iKEY_Pin */
   GPIO_InitStruct.Pin = iKEY_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(iKEY_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : MIC_DIG_Pin */
+  GPIO_InitStruct.Pin = MIC_DIG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(MIC_DIG_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : OLED_DC_Pin OLED_RST_Pin OLED_CS_Pin ERR_LED_Pin 
                            STROB_Pin */
@@ -1254,8 +1300,11 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(tLED_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
 }
 
