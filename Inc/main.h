@@ -77,7 +77,8 @@ enum {
 	devSPI = 4,
 	devUART = 8,
 	devADC = 0x10,
-	devTmr2 = 0x20
+	devTmr2 = 0x20,
+	devCDC = 0x40
 };
 
 #ifndef bool
@@ -85,7 +86,7 @@ enum {
 	#define false 0
 #endif
 
-typedef struct {
+typedef struct compas_data_t {
 	uint16_t angleHMC;
 	float tempHMC;
 } compas_data_t;
@@ -137,6 +138,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define bLED_Pin GPIO_PIN_13
+#define bLED_GPIO_Port GPIOC
 #define iKEY_Pin GPIO_PIN_0
 #define iKEY_GPIO_Port GPIOA
 #define iKEY_EXTI_IRQn EXTI0_IRQn
@@ -144,6 +147,9 @@ void Error_Handler(void);
 #define OLED_MOSI_GPIO_Port GPIOA
 #define iADC_Pin GPIO_PIN_2
 #define iADC_GPIO_Port GPIOA
+#define MIC_DIG_Pin GPIO_PIN_3
+#define MIC_DIG_GPIO_Port GPIOA
+#define MIC_DIG_EXTI_IRQn EXTI3_IRQn
 #define OLED_DC_Pin GPIO_PIN_0
 #define OLED_DC_GPIO_Port GPIOB
 #define OLED_RST_Pin GPIO_PIN_1
@@ -160,11 +166,16 @@ void Error_Handler(void);
 #define STROB_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
+#define bLED_ONOFF() HAL_GPIO_TogglePin(bLED_GPIO_Port, bLED_Pin);
+#define tLED_ONOFF() HAL_GPIO_TogglePin(tLED_GPIO_Port, tLED_Pin);
+
 #define STROB_UP()   HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_SET);
 #define STROB_DOWN() HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_RESET);
 
 #define ON_ERR_LED() HAL_GPIO_WritePin(ERR_LED_GPIO_Port, ERR_LED_Pin, GPIO_PIN_SET);
 #define OFF_ERR_LED() HAL_GPIO_WritePin(ERR_LED_GPIO_Port, ERR_LED_Pin, GPIO_PIN_RESET);
+
+
 
 #ifdef SET_OLED_SPI
 	#define CS_OLED_SELECT() HAL_GPIO_WritePin(OLED_CS_GPIO_Port, OLED_CS_Pin, GPIO_PIN_RESET)

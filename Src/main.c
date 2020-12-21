@@ -16,15 +16,24 @@
   *
   ******************************************************************************
   */
+// default step
+//arm-none-eabi-objcopy -O ihex "${BuildArtifactFileBaseName}.elf" "${BuildArtifactFileBaseName}.hex" && arm-none-eabi-size "${BuildArtifactFileName}"
+//
+// my step
+//arm-none-eabi-objcopy -O ihex "${BuildArtifactFileBaseName}.elf" "${BuildArtifactFileBaseName}.hex" && arm-none-eabi-objcopy -O binary "${BuildArtifactFileBaseName}.elf" "${BuildArtifactFileBaseName}.bin" && ls -la | grep "${BuildArtifactFileBaseName}.*"
+
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "hdr.h"
 #include "stm32f4xx_hal_adc.h"
+#include "usbd_def.h"
+#include "usbd_cdc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -154,6 +163,15 @@ uint8_t CompValCounter = 0;
 
 volatile uint8_t devError = 0;
 
+#ifdef MIC_PRESENT
+	volatile uint8_t enEXT3 = 1;
+	uint32_t tmrEXT3 = 0;
+#endif
+
+#ifdef SET_CDC_PORT
+	char rxCDC[2048] = {0};
+	uint32_t lenCDC = 0;
+#endif
 
 /* USER CODE END PV */
 
@@ -308,6 +326,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		devError = devOK;
 		putMsg(msg_out);
 	}
+#ifdef MIC_PRESENT
+	else if (GPIO_Pin == MIC_DIG_Pin) {
+		if (enEXT3) {
+			enEXT3 = 0;
+			HAL_GPIO_TogglePin(bLED_GPIO_Port, bLED_Pin);
+			putMsg(msg_out);
+			tmrEXT3 = get5ms(_500ms);
+		}
+	}
+#endif
 }
 //-----------------------------------------------------------------------------
 #if defined(SET_BMx280) || defined(SET_COMPAS)
@@ -370,6 +398,10 @@ int dl = 0;
 
 	if (!txDoneFlag) return;
 
+#ifdef SET_CDC_PORT
+	if (devError & devCDC) devError &= ~devCDC;
+#endif
+
 	char *buff = (char *)calloc(1, len);//pvPortMalloc(len);//vPortFree(buff);
 	if (buff) {
 		txDoneFlag = 0;
@@ -379,15 +411,20 @@ int dl = 0;
 
 		va_start(args, fmt);
 		vsnprintf(buff + dl, len - dl, fmt, args);
+		uint16_t slen = strlen(buff);
 
-		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)buff, strlen(buff));
 
+		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)buff, slen);
 		/*while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
 				if (HAL_UART_GetState(&huart1) == HAL_UART_STATE_BUSY_RX) break;
 				HAL_Delay(1);
 		}*/
 
 		va_end(args);
+#ifdef SET_CDC_PORT
+		if (CDC_Transmit_FS((uint8_t *)buff, slen) != USBD_OK) devError |= devCDC;
+#endif
+
 		free(buff);//vPortFree(buff);
 	}
 }
@@ -486,6 +523,27 @@ void procCompas()
 		if (COPMAS_GetAngle() != HAL_OK) devError |= devI2C1;
 	}
 }
+//------------------------------------------------------------------------------------------
+void ledOnOff()
+{
+	tLED_ONOFF();
+	bLED_ONOFF();
+}
+//------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------
+/*void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum)
+{
+	if (hpcd) {
+		uint8_t cha = 0x30;
+		if (hpcd->pData) {
+			uint8_t *uk = (uint8_t *)hpcd->pData;
+			cha = *uk;
+		}
+		char buf[32];
+		uint8_t col = ssd1306_calcx(sprintf(buf, "val=0x%02X", cha));
+		ssd1306_text_xy(buf, col, 6);
+	}
+}*/
 //-------------------------------------------------------------------------------------------
 
 /* USER CODE END 0 */
@@ -526,6 +584,9 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI4_Init();
   MX_ADC1_Init();
+#ifdef SET_CDC_PORT
+  MX_USB_DEVICE_Init();
+#endif
   /* USER CODE BEGIN 2 */
 
   	// start timer1 + interrupt
@@ -533,6 +594,11 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim2);
     //"start" rx_interrupt
 	HAL_UART_Receive_IT(&huart1, (uint8_t *)&rxByte, 1);
+
+
+    ////HAL_StatusTypeDef HAL_PCD_EP_Receive(PCD_HandleTypeDef *hpcd, uint8_t ep_addr, uint8_t *pBuf, uint32_t len);
+    //uint8_t ep_addr = 0;
+    //HAL_PCD_EP_Receive(&hpcd, ep_addr, (uint8_t *)&v_uRxByte, 1);
 
 
 	set_Date(epoch);
@@ -543,6 +609,7 @@ int main(void)
 
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
+
 
 #ifdef SET_OLED_SPI
     portOLED = &hspi4;
@@ -594,6 +661,10 @@ int main(void)
     portADC = &hadc1;
     if (startADC) HAL_ADC_Start_IT(portADC);
 
+#ifdef SET_CDC_PORT
+    CDC_Recv(rxCDC, &lenCDC);
+#endif
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -616,12 +687,20 @@ int main(void)
 		    }
 		    break;
 		    case msg_1ms:
-		    	//HAL_GPIO_TogglePin(STROB_GPIO_Port, STROB_Pin);
+//		    	HAL_GPIO_TogglePin(STROB_GPIO_Port, STROB_Pin);
 		    	schMS++;
 		    	if (!(schMS % (_100ms))) {// 100ms
 		    		if (startADC) HAL_ADC_Start_IT(portADC);
 		    		if (devError) ON_ERR_LED()
 		    		         else OFF_ERR_LED()
+#ifdef MIC_PRESENT
+					if (tmrEXT3) {
+						if (chk5ms(tmrEXT3)) {
+							enEXT3 = 1;
+							tmrEXT3 = 0;
+						}
+					}
+#endif
 		    	}
 #ifdef SET_OLED_SPI
 		    	if (!(schMS % (_250ms))) {// 250ms
@@ -633,7 +712,9 @@ int main(void)
 		    	}
 #endif
 		    	if (!(schMS % (_1s))) {// 1000ms
-					HAL_GPIO_TogglePin(tLED_GPIO_Port, tLED_Pin);
+//					HAL_GPIO_TogglePin(tLED_GPIO_Port, tLED_Pin);
+		    		//HAL_GPIO_TogglePin(bLED_GPIO_Port, bLED_Pin);
+		    		ledOnOff();
 #ifdef SET_OLED_SPI
 					sec_to_str_time(line);
 					sprintf(line+strlen(line), "\n devError:0x%02X\n", devError);
@@ -645,7 +726,16 @@ int main(void)
 					//spi_ssd1306_clear();
 					spi_ssd1306_text_xy(line, 2, 1);
 #endif
-					if (!(++seconds % (5))) putMsg(msg_out);
+					if (!(++seconds % (5))) {
+						putMsg(msg_out);
+#ifdef SET_CDC_PORT
+						if (lenCDC) {
+							Report(NULL, 1, "%s", (char *)rxCDC);
+							lenCDC = 0;
+							CDC_Recv(rxCDC, &lenCDC);
+						}
+#endif
+					}
 		    	}
 		    break;
 			case msg_rxDone:
@@ -883,9 +973,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = 12;
+  RCC_OscInitStruct.PLL.PLLM = 25;
   RCC_OscInitStruct.PLL.PLLN = 192;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -1114,14 +1204,14 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE BEGIN TIM2_Init 1 */
   	  // 1ms period :
-  	  // htim2.Init.Prescaler = 446;
+  	  // htim2.Init.Prescaler = 437;//446;
   	  // htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  	  // htim2.Init.Period = 223;
+  	  // htim2.Init.Period = 218;//223;
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 446;
+  htim2.Init.Prescaler = 437;
   htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  htim2.Init.Period = 223;
+  htim2.Init.Period = 218;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -1226,16 +1316,32 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(bLED_GPIO_Port, bLED_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|STROB_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, tLED_Pin|ERR_LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : bLED_Pin */
+  GPIO_InitStruct.Pin = bLED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(bLED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : iKEY_Pin */
   GPIO_InitStruct.Pin = iKEY_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(iKEY_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : MIC_DIG_Pin */
+  GPIO_InitStruct.Pin = MIC_DIG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(MIC_DIG_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : OLED_DC_Pin OLED_RST_Pin OLED_CS_Pin ERR_LED_Pin 
                            STROB_Pin */
@@ -1254,8 +1360,11 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(tLED_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
 }
 

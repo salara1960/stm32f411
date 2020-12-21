@@ -19,4 +19,5 @@ Application/SW4STM32 \
 Application/User \
 Drivers/CMSIS \
 Drivers/STM32F4xx_HAL_Driver \
+Middlewares/USB_Device_Library \
 

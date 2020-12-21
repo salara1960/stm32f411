@@ -11,5 +11,7 @@
 #define SET_BMx280
 #define SET_OLED_SPI
 //#define SET_COMPAS_BLOCK
+//#define MIC_PRESENT
+//#define SET_CDC_PORT
 
 #endif /* APPLICATION_USER_HDR_H_ */

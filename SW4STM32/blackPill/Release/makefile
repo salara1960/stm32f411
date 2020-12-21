@@ -8,6 +8,7 @@ RM := rm -rf
 
 # All of the sources participating in the build are defined here
 -include sources.mk
+-include Middlewares/USB_Device_Library/subdir.mk
 -include Drivers/STM32F4xx_HAL_Driver/subdir.mk
 -include Drivers/CMSIS/subdir.mk
 -include Application/User/subdir.mk
@@ -48,7 +49,8 @@ clean:
 post-build:
 	-@echo 'Generating hex and Printing size information:'
 	arm-none-eabi-objcopy -O ihex "blackPill.elf" "blackPill.hex"
-	arm-none-eabi-size "blackPill.elf"
+	arm-none-eabi-objcopy -O binary "blackPill.elf" "blackPill.bin"
+	ls -la | grep "blackPill.*"
 	-@echo ' '
 
 .PHONY: all clean dependents
