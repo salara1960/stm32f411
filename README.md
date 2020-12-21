@@ -1,6 +1,6 @@
 #################################################################################################
 #
-# New BlackPill board - stm32f411 + ssd1306(spi) + bme280(i2c with DMA) + qmc5883l
+# New BlackPill board - stm32f411 + ssd1306(spi) + bme280(i2c with DMA) + qmc5883l(i2c with DMA)
 #
 #################################################################################################
 
@@ -22,6 +22,7 @@
   (https://www.st.com/en/development-tools/stm32cubemx.html).
 * System Workbench for STM32 - IDE среда разработки ПО для микроконтроллеров семейства STM32
   (https://www.st.com/en/development-tools/sw4stm32.html).
+* ST-LINK V2 - usb отладчик для микроконтроллеров семейства STM8/STM32.
 * Saleae USB Logic 8ch - логический анализатор сигналов, 8 каналов , макс. частота дискретизации 24МГц
   (https://www.saleae.com/ru/downloads/)
 ```
