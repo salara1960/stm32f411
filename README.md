@@ -12,6 +12,7 @@
 * ssd1306 - OLED дисплей 0.96" 128x64 (интерфейы SPI)
 * bme280 - датчик атмосферного давления, температуры и влажности воздуха(интерфейс I2C с DMA).
 * qmc5883L - магнитометер - электронный компас (интерфейс I2C c DMA)
+* audio mic - модуль аудиомикрофона, выполняющего функцию источника звукового сигнала (интерфейс GPIO с interrupt)
 ```
 
 
@@ -22,6 +23,8 @@
   (https://www.st.com/en/development-tools/stm32cubemx.html).
 * System Workbench for STM32 - IDE среда разработки ПО для микроконтроллеров семейства STM32
   (https://www.st.com/en/development-tools/sw4stm32.html).
+* STM32CubeProgrammer - утилита для записи firmware в flash-память микроконтроллеров семейства STM32
+  (https://www.st.com/en/development-tools/stm32cubeprog.html).
 * ST-LINK V2 - usb отладчик для микроконтроллеров семейства STM8/STM32.
 * Saleae USB Logic 8ch - логический анализатор сигналов, 8 каналов , макс. частота дискретизации 24МГц
   (https://www.saleae.com/ru/downloads/)

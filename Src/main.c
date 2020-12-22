@@ -135,6 +135,9 @@ uint32_t tx_icnt = 0, rx_icnt = 0;
 	SPI_HandleTypeDef *portOLED = NULL;
 	char line[MAX_TMP_SIZE] = {0};
 	uint32_t spi_cnt;
+	const char *devName = " - STM32F411 - ";
+	uint8_t shiftLine = 8;
+	uint8_t shiftStart = OLED_CMD_SHIFT_START; // activate shift
 #endif
 
 #ifdef SET_BMx280
@@ -191,6 +194,11 @@ static void MX_ADC1_Init(void);
 /* USER CODE BEGIN 0 */
 
 //-------------------------------------------------------------------------------------------
+void led_OnOff()
+{
+	HAL_GPIO_TogglePin(tLED_GPIO_Port, tLED_Pin);
+	HAL_GPIO_TogglePin(bLED_GPIO_Port, bLED_Pin);
+}
 //-------------------------------------------------------------------------------------------
 uint32_t get5ms(uint32_t t)
 {
@@ -323,9 +331,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	else if (GPIO_Pin == MIC_DIG_Pin) {
 		if (enEXT3) {
 			enEXT3 = 0;
-			HAL_GPIO_TogglePin(bLED_GPIO_Port, bLED_Pin);
 			putMsg(msg_out);
 			tmrEXT3 = get5ms(_500ms);
+			if (shiftStart == OLED_CMD_SHIFT_STOP) shiftStart = OLED_CMD_SHIFT_START; // activate shift
+			                                  else shiftStart = OLED_CMD_SHIFT_STOP;  // deactivate shift
+			putMsg(msg_shiftEvent);
 		}
 	}
 #endif
@@ -379,8 +389,8 @@ RTC_DateTypeDef sDate;
 	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
 	return (sprintf(st, "%02u.%02u %02u:%02u:%02u",
-								   sDate.Date, sDate.Month,
-								   sTime.Hours, sTime.Minutes, sTime.Seconds));
+						sDate.Date, sDate.Month,
+						sTime.Hours, sTime.Minutes, sTime.Seconds));
 }
 //-------------------------------------------------------------------------------------------
 void Report(const char *tag, unsigned char addTime, const char *fmt, ...)
@@ -565,6 +575,9 @@ int main(void)
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
 
+	//HAL_GPIO_WritePin(tLED_GPIO_Port, tLED_Pin, 0);
+	HAL_GPIO_WritePin(bLED_GPIO_Port, bLED_Pin, 1);
+
 
 #ifdef SET_OLED_SPI
     portOLED = &hspi4;
@@ -575,8 +588,7 @@ int main(void)
     //spi_ssd1306_invert();
     spi_ssd1306_clear();//clear screen
 
-    sec_to_str_time(line);
-    spi_ssd1306_text_xy(line, 2, 1);
+    spi_ssd1306_text_xy(devName, 1, shiftLine);
 #endif
 
 
@@ -616,6 +628,13 @@ int main(void)
     portADC = &hadc1;
     if (startADC) HAL_ADC_Start_IT(portADC);
 
+#ifdef SET_OLED_SPI
+    shiftLine = 8;
+    shiftStart = OLED_CMD_SHIFT_START; // activate shift
+    spi_ssd1306_ls(shiftLine);
+    putMsg(msg_shiftEvent);
+#endif
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -654,29 +673,26 @@ int main(void)
 #endif
 		    	}
 #ifdef SET_OLED_SPI
-		    	if (!(schMS % (_250ms))) {// 250ms
-
-		    		sprintf(line, "  temp:%.2f\n  Azimut:%u", compData.tempHMC, compData.angleHMC);
+		    	if (!(schMS % (_500ms))) {// 500ms
+		    		sprintf(line, "  Azimut:%u", compData.angleHMC);
 		    		spi_ssd1306_clear_line(7);
-		    		spi_ssd1306_clear_line(8);
 		    		spi_ssd1306_text_xy(line, 1, 7);
-		    	}
-#endif
-		    	if (!(schMS % (_1s))) {// 1000ms
-					HAL_GPIO_TogglePin(tLED_GPIO_Port, tLED_Pin);
-#ifdef SET_OLED_SPI
-					sec_to_str_time(line);
-					sprintf(line+strlen(line), "\n devError:0x%02X\n", devError);
-					sprintf(line+strlen(line), "  VCC:%.3fV\n", VccF);
+
+		    		++seconds;
+		    		if (!(seconds % (2))) led_OnOff();
+
+		    		sec_to_str_time(line);
+		    		sprintf(line+strlen(line), "\n devError:0x%02X\n  VCC:%.3fV\n", devError, VccF);
 		#ifdef SET_BMx280
 					sprintf(line+strlen(line), "  mmHg:%.2f\n  DegC:%.2f", sensors.bmx_pres, sensors.bmx_temp);
 					if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "\n  %%rH:%.2f\n", sensors.bmx_humi);
 		#endif
 					//spi_ssd1306_clear();
 					spi_ssd1306_text_xy(line, 2, 1);
-#endif
-					if (!(++seconds % (5))) putMsg(msg_out);
+
+					if (!(seconds % (10))) putMsg(msg_out);
 		    	}
+#endif
 		    break;
 			case msg_rxDone:
 				Report(NULL, 0, "%s", stx);
@@ -700,6 +716,15 @@ int main(void)
 			case msg_rst:
 				HAL_Delay(1000);
 				NVIC_SystemReset();
+			break;
+			case msg_shiftEvent:
+#ifdef SET_OLED_SPI
+				spi_ssd1306_shift(shiftStart);
+				if (shiftStart == OLED_CMD_SHIFT_STOP) {
+					spi_ssd1306_clear_line(shiftLine);
+					spi_ssd1306_text_xy(devName, 1, shiftLine);
+				}
+#endif
 			break;
 			case msg_out:
 				sprintf(tmp, " | tik=%lu fifo:%u/%u", tik, cnt_evt, max_evt);

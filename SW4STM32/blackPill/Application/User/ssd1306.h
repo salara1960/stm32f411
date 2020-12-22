@@ -27,6 +27,8 @@
 #define OLED_CMD_SET_MEMORY_ADDR_MODE   0x20    // follow with 0x00 = HORZ mode = Behave like a KS108 graphic LCD
 #define OLED_CMD_SET_COLUMN_RANGE       0x21    // can be used only in HORZ/VERT mode - follow with 0x00 and 0x7F = COL127
 #define OLED_CMD_SET_PAGE_RANGE         0x22    // can be used only in HORZ/VERT mode - follow with 0x00 and 0x07 = PAGE7
+#define OLED_CMD_SHIFT_STOP             0x2e    // deactivate shift
+#define OLED_CMD_SHIFT_START            0x2f    // activate shift
 
 // Hardware Config (pg.31)
 #define OLED_CMD_SET_DISPLAY_START_LINE 0x40
@@ -45,6 +47,15 @@
 // Charge Pump (pg.62)
 #define OLED_CMD_SET_CHARGE_PUMP        0x8D    // follow with 0x14
 
+//
+#define OLED_TIME_INTERVAL              0x07    // 0 -   5 frame
+												// 1 -  64 frame
+                                                // 2 - 128 frame
+                                                // 3 - 256 frame
+                                                // 4 -   3 frame
+                                                // 5 -   4 frame
+                                                // 6 -  25 frame
+                                                // 7 -   2 frame
 //------------------------------------------------------------------------
 
 #ifdef SET_OLED_I2C
@@ -68,6 +79,8 @@
 	extern void spi_ssd1306_Reset();
 	extern void spi_ssd1306_WriteCmds(uint8_t *cmds, size_t sz);
 	extern void spi_ssd1306_WriteData(const char *buf, size_t sz, uint8_t with);
+	extern void spi_ssd1306_ls(uint8_t cy);
+	extern void spi_ssd1306_shift(uint8_t on_off);
 	extern void spi_ssd1306_on(uint8_t flag);
 	extern void spi_ssd1306_init();
 	extern void spi_ssd1306_invert();

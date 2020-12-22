@@ -68,7 +68,8 @@ typedef enum {
 	msg_endNext,
 	msg_readBMX,
 	msg_calibr1Done,
-	msg_calibr2Done
+	msg_calibr2Done,
+	msg_shiftEvent
 } evt_t;
 
 enum {
@@ -164,6 +165,8 @@ void Error_Handler(void);
 #define STROB_Pin GPIO_PIN_9
 #define STROB_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
+
+
 
 #define STROB_UP()   HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_SET);
 #define STROB_DOWN() HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_RESET);

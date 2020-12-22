@@ -56,7 +56,26 @@ void spi_ssd1306_WriteData(const char *buf, size_t sz, uint8_t with)
 	}
 }
 //-----------------------------------------------------------------------------------------
+void spi_ssd1306_ls(uint8_t cy)//left shift string in line cy(1..8)
+{
+	uint8_t dat[] = {OLED_CONTROL_BYTE_CMD_STREAM,
+			         0x27,//to left shift
+					 0,// Dummy
+					 cy - 1,//Start page
+					 OLED_TIME_INTERVAL,//Time Interval as 2 frames
+					 cy - 1,//Stop page
+					 0,//Dummy
+					 0xff};//Dummy
+
+
+	spi_ssd1306_WriteCmds(dat, sizeof(dat));
+}
 //-----------------------------------------------------------------------------------------
+void spi_ssd1306_shift(uint8_t on_off)//0x2e - deactivate, 0x2f - activate
+{
+	uint8_t dat[] = {OLED_CONTROL_BYTE_CMD_SINGLE, on_off};
+	spi_ssd1306_WriteCmds(dat, sizeof(dat));
+}
 //-----------------------------------------------------------------------------------------
 void spi_ssd1306_on(unsigned char flag)
 {
