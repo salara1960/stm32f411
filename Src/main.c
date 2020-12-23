@@ -66,7 +66,12 @@
 #define _300ms (_1ms * 300)
 #define _400ms (_1ms * 400)
 #define _500ms (_1ms * 500)
+#define _600ms (_1ms * 600)
+#define _700ms (_1ms * 700)
+#define _800ms (_1ms * 800)
+#define _900ms (_1ms * 900)
 #define _1s (_1ms * 1000)
+#define _1s5 (_1ms * 1500)
 #define _2s (_1s * 2)//2000
 #define _3s (_1s * 3)//3000
 #define _4s (_1s * 4)//4000
@@ -103,6 +108,8 @@ DMA_HandleTypeDef hdma_usart1_tx;
 
 /* USER CODE BEGIN PV */
 
+const char gradus = 0x1f;
+
 static evt_t evt_fifo[MAX_FIFO_SIZE] = {msg_empty};
 uint8_t rd_evt_adr = 0;
 uint8_t wr_evt_adr = 0;
@@ -111,8 +118,7 @@ uint8_t cnt_evt = 0;
 uint8_t max_evt = 0;
 
 volatile uint32_t tik = 0;
-//volatile uint8_t mktik = 0;
-volatile time_t epoch = 1608553951;
+volatile time_t epoch = 1608735394;//1608553951;
 uint8_t tZone = 0;//GMT
 volatile uint8_t setDate = 0;
 char rxData[MAX_TMP_SIZE] = {0};
@@ -125,7 +131,6 @@ volatile uint32_t txDoneCnt = 0;
 volatile uint8_t txDoneFlag = 1;
 volatile uint8_t ledValue = 0;
 uint32_t next = 0;
-uint32_t seconds = 0;
 uint32_t msBegin = 0, msCnt = 0;
 //
 int siCmd = 0;
@@ -138,6 +143,7 @@ uint32_t tx_icnt = 0, rx_icnt = 0;
 	const char *devName = " - STM32F411 - ";
 	uint8_t shiftLine = 8;
 	uint8_t shiftStart = OLED_CMD_SHIFT_START; // activate shift
+	uint32_t tmr_shift = 0;
 #endif
 
 #ifdef SET_BMx280
@@ -162,7 +168,10 @@ uint8_t VccValCounter = 0;
 uint16_t CompBuf[MAX_COMP_BUF] = {0};//буфер для накопления данных перед усреднением
 uint8_t CompValCounter = 0;
 
+uint32_t one_sec = 0;
+uint32_t seconds = 0;
 volatile uint8_t devError = 0;
+uint32_t tmr_out = 0;
 
 #ifdef MIC_PRESENT
 	volatile uint8_t enEXT3 = 1;
@@ -197,16 +206,28 @@ static void MX_ADC1_Init(void);
 void led_OnOff()
 {
 	HAL_GPIO_TogglePin(tLED_GPIO_Port, tLED_Pin);
-	HAL_GPIO_TogglePin(bLED_GPIO_Port, bLED_Pin);
+	//HAL_GPIO_TogglePin(bLED_GPIO_Port, bLED_Pin);
 }
 //-------------------------------------------------------------------------------------------
-uint32_t get5ms(uint32_t t)
+uint32_t getTimer(uint32_t t)
 {
 	return (tik + t);
 }
-int chk5ms(uint32_t t)
+int chkTimer(uint32_t t)
 {
 	return (tik >= t ? 1 : 0);
+}
+//-------------------------------------------------------------------------------------------
+void setSec(uint32_t ep)
+{
+	//HAL_NVIC_DisableIRQ(TIM2_IRQn);
+		seconds = ep;
+	//HAL_NVIC_EnableIRQ(TIM2_IRQn);
+}
+//-------------------------------------------------------------------------------------------
+uint32_t getSec()
+{
+	return seconds;
 }
 //-------------------------------------------------------------------------------------------
 void putMsg(evt_t evt)
@@ -279,12 +300,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
   /* USER CODE BEGIN Callback 1 */
 	if (htim->Instance == TIM2) {//1ms period
-//		putMsg(msg_empty);
-		//mktik = (mktik + 1) & 1;
-		//if (!mktik) {
-			tik++;
-			if (!(tik % (_1ms))) putMsg(msg_1ms);
-		//}
+		tik++;
+		one_sec++;
+		//
+		if (one_sec >= _1s) {
+			one_sec = 0;
+			seconds++;
+			putMsg(msg_sec);
+		}
+		//
+		if (!(tik % (_1ms))) putMsg(msg_1ms);
+		//
 	}
   /* USER CODE END Callback 1 */
 }
@@ -331,8 +357,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	else if (GPIO_Pin == MIC_DIG_Pin) {
 		if (enEXT3) {
 			enEXT3 = 0;
-			putMsg(msg_out);
-			tmrEXT3 = get5ms(_500ms);
+			//putMsg(msg_out);
+			tmrEXT3 = getTimer(_250ms);
 			if (shiftStart == OLED_CMD_SHIFT_STOP) shiftStart = OLED_CMD_SHIFT_START; // activate shift
 			                                  else shiftStart = OLED_CMD_SHIFT_STOP;  // deactivate shift
 			putMsg(msg_shiftEvent);
@@ -383,9 +409,29 @@ void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 //-----------------------------------------------------------------------------
 int sec_to_str_time(char *st)
 {
+/*
+struct tm ts;
+time_t sec = (time_t)getSec();
+
+	localtime_r(&sec, &ts);
+	sprintf(st, "%02u.%02u %02u:%02u:%02u",
+				ts.tm_mday, ts.tm_mon + 1,
+				ts.tm_hour + tZone, ts.tm_min, ts.tm_sec);
+	return strlen(st);
+
+struct tm ts;
+uint32_t sec = getSec();
+char buf[64];
+
+	localtime_r(&sec, &ts);
+	strftime(buf, sizeof(buf), "%d.%m %H:%M:%S", &ts);
+	strcpy(st, buf);
+
+	return strlen(st);
+*/
+
 RTC_TimeTypeDef sTime;
 RTC_DateTypeDef sDate;
-
 	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
 	return (sprintf(st, "%02u.%02u %02u:%02u:%02u",
@@ -415,7 +461,7 @@ int dl = 0;
 
 		/*while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
 				if (HAL_UART_GetState(&huart1) == HAL_UART_STATE_BUSY_RX) break;
-				HAL_Delay(1);
+				//HAL_Delay(1);
 		}*/
 
 		va_end(args);
@@ -426,6 +472,8 @@ int dl = 0;
 void set_Date(time_t ep)
 {
 struct tm ts;
+
+	//setSec((uint32_t)ep);
 
 	if (!localtime_r(&ep, &ts)) return;
 
@@ -445,7 +493,7 @@ struct tm ts;
 }
 //
 //------------------------------------------------------------------------------------------
-uint32_t get_Date()
+uint32_t get_DateTime()
 {
 struct tm ts;
 RTC_TimeTypeDef sTime;
@@ -559,14 +607,19 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
+
   	// start timer1 + interrupt
 	HAL_TIM_Base_Start(&htim2);
 	HAL_TIM_Base_Start_IT(&htim2);
     //"start" rx_interrupt
 	HAL_UART_Receive_IT(&huart1, (uint8_t *)&rxByte, 1);
 
+	portADC = &hadc1;
+	if (startADC) HAL_ADC_Start_IT(portADC);
 
 	set_Date(epoch);
+	setSec(get_DateTime());
+	//setSec((uint32_t)epoch);
 
 	char *uk = NULL, *uke = NULL;
 	evt_t evt;
@@ -588,7 +641,11 @@ int main(void)
     //spi_ssd1306_invert();
     spi_ssd1306_clear();//clear screen
 
+    shiftLine = 8;
     spi_ssd1306_text_xy(devName, 1, shiftLine);
+    shiftStart = OLED_CMD_SHIFT_START; // activate shift
+    spi_ssd1306_ls(shiftLine);
+    putMsg(msg_shiftEvent);
 #endif
 
 
@@ -623,17 +680,9 @@ int main(void)
     evt = msg_i2c;
 #endif
     putMsg(evt);
-    next = get5ms(_1ms);
 
-    portADC = &hadc1;
-    if (startADC) HAL_ADC_Start_IT(portADC);
-
-#ifdef SET_OLED_SPI
-    shiftLine = 8;
-    shiftStart = OLED_CMD_SHIFT_START; // activate shift
-    spi_ssd1306_ls(shiftLine);
-    putMsg(msg_shiftEvent);
-#endif
+    tmr_out = getTimer(_1s);
+    next = getTimer(_250ms);
 
   /* USER CODE END 2 */
 
@@ -642,6 +691,9 @@ int main(void)
 	while (1)  {
 
 		switch (getMsg()) {
+
+			default : {}
+
 		    case msg_adcReady:
 		    {
 		    	adcValue = (uint16_t)HAL_ADC_GetValue(portADC) & 0xfff;// * 0.80586;
@@ -665,34 +717,51 @@ int main(void)
 		    		         else OFF_ERR_LED()
 #ifdef MIC_PRESENT
 					if (tmrEXT3) {
-						if (chk5ms(tmrEXT3)) {
+						if (chkTimer(tmrEXT3)) {
 							enEXT3 = 1;
 							tmrEXT3 = 0;
 						}
 					}
 #endif
 		    	}
-#ifdef SET_OLED_SPI
+		    	//
 		    	if (!(schMS % (_500ms))) {// 500ms
-		    		sprintf(line, "  Azimut:%u", compData.angleHMC);
+#ifdef SET_OLED_SPI
+		    		sprintf(line, "  azimut:%u%c", compData.angleHMC, gradus);
 		    		spi_ssd1306_clear_line(7);
 		    		spi_ssd1306_text_xy(line, 1, 7);
-
-		    		++seconds;
-		    		if (!(seconds % (2))) led_OnOff();
-
+#endif
+		    	}
+		    	if (!(schMS % (_500ms))) {// 500ms
 		    		sec_to_str_time(line);
 		    		sprintf(line+strlen(line), "\n devError:0x%02X\n  VCC:%.3fV\n", devError, VccF);
 		#ifdef SET_BMx280
-					sprintf(line+strlen(line), "  mmHg:%.2f\n  DegC:%.2f", sensors.bmx_pres, sensors.bmx_temp);
-					if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "\n  %%rH:%.2f\n", sensors.bmx_humi);
+					sprintf(line+strlen(line), " pres:%.2fmmHg\n  temp:%.2f%c", sensors.bmx_pres, sensors.bmx_temp, gradus);
+					if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "\n  humi:%.2f%%\n", sensors.bmx_humi);
 		#endif
-					//spi_ssd1306_clear();
+					//sprintf(line+strlen(line), "\n  azimut:%u%c", compData.angleHMC, gradus);
+#ifdef SET_OLED_SPI
 					spi_ssd1306_text_xy(line, 2, 1);
-
-					if (!(seconds % (10))) putMsg(msg_out);
-		    	}
 #endif
+		    	}
+		    	//
+		    break;
+		    case msg_sec:
+		    	led_OnOff();
+		    	//
+		    	if (tmr_out) {
+		    		if (chkTimer(tmr_out)) {
+		    			tmr_out = 0;
+		    			putMsg(msg_out);
+		    		}
+		    	}
+		    	//
+		    	if (tmr_shift) {
+		    		if (chkTimer(tmr_shift)) {
+		    			tmr_shift = 0;
+		    			putMsg(msg_shiftEvent);
+		    		}
+		    	}
 		    break;
 			case msg_rxDone:
 				Report(NULL, 0, "%s", stx);
@@ -711,6 +780,10 @@ int main(void)
 					}
 				} else if ((uk = strstr(stx, "rst")) != NULL) {
 					putMsg(msg_rst);
+				} else if ((uk = strstr(stx, "shift")) != NULL) {
+					if (shiftStart == OLED_CMD_SHIFT_STOP) shiftStart = OLED_CMD_SHIFT_START;
+					                                  else shiftStart = OLED_CMD_SHIFT_STOP;
+					putMsg(msg_shiftEvent);
 				}
 			break;
 			case msg_rst:
@@ -725,14 +798,16 @@ int main(void)
 					spi_ssd1306_text_xy(devName, 1, shiftLine);
 				}
 #endif
+				putMsg(msg_out);
 			break;
 			case msg_out:
 				sprintf(tmp, " | tik=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
 				if (devError) sprintf(tmp+strlen(tmp), " devError:0x%02X", devError);
 				sprintf(tmp+strlen(tmp), " | Vcc=%.3fV", VccF);
 #ifdef SET_BMx280
-				sprintf(tmp+strlen(tmp)," | %s: ready=%d mmHg=%.2f degC=%.2f", bmxName, bStat, sensors.bmx_pres, sensors.bmx_temp);
-				if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " %%rH=%.2f", sensors.bmx_humi);
+				sprintf(tmp+strlen(tmp)," | %s: ready=%d pres=%.2fmmHg temp=%.2fC",
+						                bmxName, bStat, sensors.bmx_pres, sensors.bmx_temp);
+				if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f%%", sensors.bmx_humi);
 #endif
 				//compas_stat_t *cStat = (compas_stat_t *)confRegHmc;
 				sprintf(tmp+strlen(tmp), " | QMC5883L: ready=%u azimut=%u temp=%.2f",
@@ -740,12 +815,13 @@ int main(void)
 						compData.angleHMC,
 						compData.tempHMC);//, xyz->x, xyz->y, xyz->z);
 				Report(NULL, 1, "%s\r\n", tmp);
+				tmr_out = getTimer(_5s);
 			break;
 #ifndef SET_COMPAS_BLOCK
 			case msg_i2c:
 				switch (siCmd) {
 					case msg_startCompas:
-						if (chk5ms(next)) {
+						if (chkTimer(next)) {
 							STROB_DOWN();
 							//
 							msBegin = HAL_GetTick();
@@ -769,7 +845,7 @@ int main(void)
 						}
 						//
 						siCmd = msg_empty;
-						next = get5ms(0);
+						next = getTimer(0);
 						putMsg(msg_nextSens);
 						//
 						//STROB_UP();
@@ -786,7 +862,7 @@ int main(void)
 						//STROB_DOWN();
 						bStat = i2c_getStat_bmx280();
 						if (!bStat) {
-							//next = get5ms(_1ms);
+							//next = getTimer(_1ms);
 							siCmd = msg_rdyTest;
 							putMsg(msg_i2c);
 							break;
@@ -835,7 +911,7 @@ int main(void)
 #else
 			case msg_startCompas:
 			{
-				if (chk5ms(next)) {
+				if (chkTimer(next)) {
 					//STROB_DOWN();
 					//
 					msBegin = HAL_GetTick();
@@ -858,17 +934,17 @@ int main(void)
 			break;
 #endif
 			case msg_nextSens:
-				if (chk5ms(next)) {
+				if (chkTimer(next)) {
 					//STROB_DOWN();
 					//
 #ifdef SET_BMx280
 					//
 					if (i2c_test_bmx280(&info_bmp280, reg_id) != HAL_OK) devError |= devI2C1;
-					next = get5ms(_1ms);
+					next = getTimer(_1ms);
 	#ifdef SET_COMPAS_BLOCK
 					bStat = i2c_getStat_bmx280();
 					if (!bStat) {
-						next = get5ms(_1ms);
+						next = getTimer(_1ms);
 						putMsg(msg_nextSens);
 						break;
 					}
@@ -895,7 +971,7 @@ int main(void)
 					msCnt -= _250ms;
 				}
 				if (!msCnt) msCnt++;
-				next = get5ms(msCnt);
+				next = getTimer(msCnt);
 				//
 #ifdef SET_COMPAS_BLOCK
 				evt = msg_startCompas;

@@ -55,6 +55,7 @@ extern "C" {
 typedef enum {
 	msg_empty = 0,
 	msg_1ms,
+	msg_sec,
 	msg_rxDone,
 	msg_rst,
 	msg_out,
