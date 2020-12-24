@@ -38,7 +38,7 @@
 /* USER CODE BEGIN PTD */
 
 #define MAX_TMP_SIZE  256
-#define MAX_FIFO_SIZE  64
+#define MAX_FIFO_SIZE  32
 #define MAX_UART_BUF  512
 #define MAX_VCC_BUF     4
 #define MAX_COMP_BUF    4
@@ -118,7 +118,7 @@ uint8_t cnt_evt = 0;
 uint8_t max_evt = 0;
 
 volatile uint32_t tik = 0;
-volatile time_t epoch = 1608735394;//1608553951;
+volatile time_t epoch = 1608809730;//1608735394;//1608553951;
 uint8_t tZone = 0;//GMT
 volatile uint8_t setDate = 0;
 char rxData[MAX_TMP_SIZE] = {0};
@@ -151,6 +151,9 @@ uint32_t tx_icnt = 0, rx_icnt = 0;
 	uint8_t reg_id = 0;
 	uint8_t data_rdx[DATA_LENGTH] = {0};
 	size_t d_size = 6;
+	bool bStat = false;
+	bool bmxCalibr = false;
+	char bmxName[16] = {0};
 #endif
 
 compas_data_t compData = {0, 0.0};
@@ -206,7 +209,6 @@ static void MX_ADC1_Init(void);
 void led_OnOff()
 {
 	HAL_GPIO_TogglePin(tLED_GPIO_Port, tLED_Pin);
-	//HAL_GPIO_TogglePin(bLED_GPIO_Port, bLED_Pin);
 }
 //-------------------------------------------------------------------------------------------
 uint32_t getTimer(uint32_t t)
@@ -252,6 +254,9 @@ void putMsg(evt_t evt)
 		wr_evt_err = 0;
 		if (cnt_evt > max_evt) max_evt = cnt_evt;
 	}
+
+	if (wr_evt_err) devError |= devFifo;
+		       else devError &= ~devFifo;
 
 #ifndef SET_COMPAS_BLOCK
 	HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
@@ -309,7 +314,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			putMsg(msg_sec);
 		}
 		//
-		if (!(tik % (_1ms))) putMsg(msg_1ms);
+		if (!(tik % (_10ms))) putMsg(msg_5ms);
 		//
 	}
   /* USER CODE END Callback 1 */
@@ -566,6 +571,24 @@ void procCompas()
 	}
 }
 //-------------------------------------------------------------------------------------------
+char *printOut(char *tmp)
+{
+	sprintf(tmp, " | tik=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
+	if (devError) sprintf(tmp+strlen(tmp), " devError:0x%02X", devError);
+	sprintf(tmp+strlen(tmp), " | Vcc=%.3fV", VccF);
+#ifdef SET_BMx280
+	sprintf(tmp+strlen(tmp)," | %s: ready=%d pres=%.2fmmHg temp=%.2fC",
+			bmxName, bStat, sensors.bmx_pres, sensors.bmx_temp);
+	if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f%%", sensors.bmx_humi);
+#endif
+	//compas_stat_t *cStat = (compas_stat_t *)confRegHmc;
+	sprintf(tmp+strlen(tmp), " | QMC5883L: ready=%u azimut=%u temp=%.2f",
+								cStat,
+			    				compData.angleHMC,
+			    				compData.tempHMC);//, xyz->x, xyz->y, xyz->z);
+	return &tmp[0];
+}
+//-------------------------------------------------------------------------------------------
 
 /* USER CODE END 0 */
 
@@ -628,9 +651,6 @@ int main(void)
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
 
-	//HAL_GPIO_WritePin(tLED_GPIO_Port, tLED_Pin, 0);
-	HAL_GPIO_WritePin(bLED_GPIO_Port, bLED_Pin, 1);
-
 
 #ifdef SET_OLED_SPI
     portOLED = &hspi4;
@@ -651,9 +671,7 @@ int main(void)
 
 #ifdef SET_BMx280
     portBMP = &hi2c1;
-    bool bStat = false;
-    bool bmxCalibr = false;
-    char bmxName[16] = {0};
+
     i2c_reset_bmx280(&reg_id);
     if (reg_id == BME280_SENSOR) {
     	d_size = 8;
@@ -679,10 +697,12 @@ int main(void)
     siCmd = msg_startCompas;
     evt = msg_i2c;
 #endif
-    putMsg(evt);
 
-    tmr_out = getTimer(_1s);
-    next = getTimer(_250ms);
+    uint32_t cikl_out = _4s;
+    tmr_out = getTimer(_500ms);
+    next = getTimer(_1ms);
+
+    putMsg(evt);
 
   /* USER CODE END 2 */
 
@@ -691,8 +711,6 @@ int main(void)
 	while (1)  {
 
 		switch (getMsg()) {
-
-			default : {}
 
 		    case msg_adcReady:
 		    {
@@ -708,7 +726,7 @@ int main(void)
 		    	startADC = 1;
 		    }
 		    break;
-		    case msg_1ms:
+		    case msg_5ms:
 		    	//HAL_GPIO_TogglePin(STROB_GPIO_Port, STROB_Pin);
 		    	schMS++;
 		    	if (!(schMS % (_100ms))) {// 100ms
@@ -725,34 +743,29 @@ int main(void)
 #endif
 		    	}
 		    	//
-		    	if (!(schMS % (_500ms))) {// 500ms
-#ifdef SET_OLED_SPI
-		    		sprintf(line, "  azimut:%u%c", compData.angleHMC, gradus);
-		    		spi_ssd1306_clear_line(7);
-		    		spi_ssd1306_text_xy(line, 1, 7);
-#endif
-		    	}
-		    	if (!(schMS % (_500ms))) {// 500ms
-		    		sec_to_str_time(line);
-		    		sprintf(line+strlen(line), "\n devError:0x%02X\n  VCC:%.3fV\n", devError, VccF);
-		#ifdef SET_BMx280
-					sprintf(line+strlen(line), " pres:%.2fmmHg\n  temp:%.2f%c", sensors.bmx_pres, sensors.bmx_temp, gradus);
-					if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "\n  humi:%.2f%%\n", sensors.bmx_humi);
-		#endif
-					//sprintf(line+strlen(line), "\n  azimut:%u%c", compData.angleHMC, gradus);
-#ifdef SET_OLED_SPI
-					spi_ssd1306_text_xy(line, 2, 1);
-#endif
-		    	}
-		    	//
 		    break;
 		    case msg_sec:
 		    	led_OnOff();
 		    	//
+#ifdef SET_OLED_SPI
+		    	sec_to_str_time(line);
+		    	sprintf(line+strlen(line), "\n devError:0x%02X\n  VCC:%.3fV\n", devError, VccF);
+#ifdef SET_BMx280
+		    	sprintf(line+strlen(line), " pres:%.2fmmHg\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
+		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
+#endif
+		    	sprintf(line+strlen(line), "  azimut:%u%c\n", compData.angleHMC, gradus);
+		    	spi_ssd1306_text_xy(line, 2, 1);
+#endif
+		    	//
 		    	if (tmr_out) {
 		    		if (chkTimer(tmr_out)) {
 		    			tmr_out = 0;
+		    			//
 		    			putMsg(msg_out);
+		    			//Report(NULL, 1, "%s\r\n", printOut(tmp));
+		    			//tmr_out = getTimer(cikl_out);
+		    			//
 		    		}
 		    	}
 		    	//
@@ -801,21 +814,8 @@ int main(void)
 				putMsg(msg_out);
 			break;
 			case msg_out:
-				sprintf(tmp, " | tik=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
-				if (devError) sprintf(tmp+strlen(tmp), " devError:0x%02X", devError);
-				sprintf(tmp+strlen(tmp), " | Vcc=%.3fV", VccF);
-#ifdef SET_BMx280
-				sprintf(tmp+strlen(tmp)," | %s: ready=%d pres=%.2fmmHg temp=%.2fC",
-						                bmxName, bStat, sensors.bmx_pres, sensors.bmx_temp);
-				if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f%%", sensors.bmx_humi);
-#endif
-				//compas_stat_t *cStat = (compas_stat_t *)confRegHmc;
-				sprintf(tmp+strlen(tmp), " | QMC5883L: ready=%u azimut=%u temp=%.2f",
-						cStat,
-						compData.angleHMC,
-						compData.tempHMC);//, xyz->x, xyz->y, xyz->z);
-				Report(NULL, 1, "%s\r\n", tmp);
-				tmr_out = getTimer(_5s);
+				Report(NULL, 1, "%s\r\n", printOut(tmp));
+				tmr_out = getTimer(cikl_out);
 			break;
 #ifndef SET_COMPAS_BLOCK
 			case msg_i2c:
@@ -965,10 +965,10 @@ int main(void)
 			case msg_endNext:
 				//
 				msCnt = HAL_GetTick() - msBegin;
-				if (msCnt < _250ms) {
-					msCnt = _250ms - msCnt;
+				if (msCnt < _500ms) {
+					msCnt = _500ms - msCnt;
 				} else {
-					msCnt -= _250ms;
+					msCnt -= _500ms;
 				}
 				if (!msCnt) msCnt++;
 				next = getTimer(msCnt);
@@ -1202,7 +1202,8 @@ static void MX_SPI4_Init(void)
   /* USER CODE END SPI4_Init 0 */
 
   /* USER CODE BEGIN SPI4_Init 1 */
-
+	// for 100 MHz clock :
+	// hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16; - 6.25 Mbits/s
   /* USER CODE END SPI4_Init 1 */
   /* SPI4 parameter configuration*/
   hspi4.Instance = SPI4;
@@ -1212,7 +1213,7 @@ static void MX_SPI4_Init(void)
   hspi4.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi4.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi4.Init.NSS = SPI_NSS_SOFT;
-  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi4.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi4.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi4.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -1245,9 +1246,16 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE BEGIN TIM2_Init 1 */
   	  // 1ms period :
-  	  // htim2.Init.Prescaler = 446;
-  	  // htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  	  // htim2.Init.Period = 223;
+  	  // for 100MHz clock
+  	  	  // htim2.Init.Prescaler = 446;
+  	  	  // htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
+  	  	  // htim2.Init.Period = 223;
+  	  	  //
+  	  //  for 96MHz clock
+  	  	  // htim2.Init.Prescaler = 437;//446;
+    	  // htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
+    	  // htim2.Init.Period = 218;//223;
+  	  	  //
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 446;
@@ -1357,20 +1365,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(bLED_GPIO_Port, bLED_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|STROB_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, tLED_Pin|ERR_LED_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : bLED_Pin */
-  GPIO_InitStruct.Pin = bLED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(bLED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : iKEY_Pin */
   GPIO_InitStruct.Pin = iKEY_Pin;

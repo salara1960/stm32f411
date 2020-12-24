@@ -23,6 +23,8 @@
   (https://www.st.com/en/development-tools/stm32cubemx.html).
 * System Workbench for STM32 - IDE среда разработки ПО для микроконтроллеров семейства STM32
   (https://www.st.com/en/development-tools/sw4stm32.html).
+* stm32flash - утилита для записи firmware в flash-память микроконтроллеров семейства STM32
+  через встроенный порт USART1 (https://sourceforge.net/projects/stm32flash/files/)
 * STM32CubeProgrammer - утилита для записи firmware в flash-память микроконтроллеров семейства STM32
   (https://www.st.com/en/development-tools/stm32cubeprog.html).
 * ST-LINK V2 - usb отладчик для микроконтроллеров семейства STM8/STM32.
@@ -50,9 +52,11 @@
   в USART1, например :
 
 ```
-12.12 16:50:35 | tik=5001 fifo:1/7 | Vcc=3.300V | BME280: ready=1 mmHg=764.28 degC=24.14 %rH=43.60 | QMC5883L: ready=1 azimut=317
-12.12 16:50:40 | tik=10001 fifo:1/7 | Vcc=3.300V | BME280: ready=1 mmHg=764.35 degC=24.14 %rH=43.46 | QMC5883L: ready=1 azimut=317
-12.12 16:50:45 | tik=15001 fifo:1/7 | Vcc=3.300V | BME280: ready=1 mmHg=764.29 degC=24.14 %rH=43.90 | QMC5883L: ready=1 azimut=317
+24.12 13:53:25 | tik=461001 fifo:1/3 | Vcc=3.281V | BME280: ready=1 pres=744.04mmHg temp=26.84C humi=35.78% | QMC5883L: ready=1 azimut=284
+24.12 13:53:30 | tik=466001 fifo:1/3 | Vcc=3.283V | BME280: ready=1 pres=744.00mmHg temp=26.84C humi=35.75% | QMC5883L: ready=1 azimut=285
+24.12 13:53:35 | tik=471001 fifo:1/3 | Vcc=3.280V | BME280: ready=1 pres=744.08mmHg temp=26.84C humi=35.71% | QMC5883L: ready=1 azimut=284
+24.12 13:53:40 | tik=476001 fifo:1/3 | Vcc=3.281V | BME280: ready=1 pres=743.95mmHg temp=26.83C humi=35.68% | QMC5883L: ready=1 azimut=284
+24.12 13:53:45 | tik=481001 fifo:1/3 | Vcc=3.282V | BME280: ready=1 pres=743.99mmHg temp=26.83C humi=35.65% | QMC5883L: ready=1 azimut=284
 ```
 
   Часть этих данные (дата и время, код ошибки устройства, напряжение питания, атмосферное давление,

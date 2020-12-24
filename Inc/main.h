@@ -54,7 +54,7 @@ extern "C" {
 
 typedef enum {
 	msg_empty = 0,
-	msg_1ms,
+	msg_5ms,//msg_1ms,
 	msg_sec,
 	msg_rxDone,
 	msg_rst,
@@ -79,7 +79,8 @@ enum {
 	devSPI = 4,
 	devUART = 8,
 	devADC = 0x10,
-	devTmr2 = 0x20
+	devTmr2 = 0x20,
+	devFifo = 0x40
 };
 
 #ifndef bool
@@ -139,8 +140,6 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define bLED_Pin GPIO_PIN_13
-#define bLED_GPIO_Port GPIOC
 #define iKEY_Pin GPIO_PIN_0
 #define iKEY_GPIO_Port GPIOA
 #define iKEY_EXTI_IRQn EXTI0_IRQn
