@@ -29,6 +29,8 @@
 #define OLED_CMD_SET_PAGE_RANGE         0x22    // can be used only in HORZ/VERT mode - follow with 0x00 and 0x07 = PAGE7
 #define OLED_CMD_SHIFT_STOP             0x2e    // deactivate shift
 #define OLED_CMD_SHIFT_START            0x2f    // activate shift
+#define OLED_RIGHT_HORIZONTAL_SCROLL    0x26
+#define OLED_LEFT_HORIZONTAL_SCROLL     0x27
 
 // Hardware Config (pg.31)
 #define OLED_CMD_SET_DISPLAY_START_LINE 0x40
@@ -56,40 +58,43 @@
                                                 // 5 -   4 frame
                                                 // 6 -  25 frame
                                                 // 7 -   2 frame
+#define BUF_LINE_SIZE   128
+#define OLED_DUMMY_BYTE 0x00
+
 //------------------------------------------------------------------------
 
 #ifdef SET_OLED_I2C
 	#define OLED_I2C_ADDRESS                0x3C << 1
 
-	extern void i2c_ssd1306_on(bool flag);
-	extern void i2c_ssd1306_init();
-	extern void i2c_ssd1306_invert();
-	extern void i2c_ssd1306_clear();
-	extern void i2c_ssd1306_pattern();
-	extern void i2c_ssd1306_contrast(uint8_t value);
-	extern void i2c_ssd1306_clear_line(uint8_t cy);
-	extern void i2c_ssd1306_text_xy(const char *stroka, uint8_t cx, uint8_t cy);
-	extern void i2c_ssd1306_text(const char *stroka);
+	void i2c_ssd1306_on(bool flag);
+	void i2c_ssd1306_init();
+	void i2c_ssd1306_invert();
+	void i2c_ssd1306_clear();
+	void i2c_ssd1306_pattern();
+	void i2c_ssd1306_contrast(uint8_t value);
+	void i2c_ssd1306_clear_line(uint8_t cy);
+	void i2c_ssd1306_text_xy(const char *stroka, uint8_t cx, uint8_t cy);
+	void i2c_ssd1306_text(const char *stroka);
 #endif
 
 #ifdef SET_OLED_SPI
-	extern uint8_t spiRdy;
-	extern uint8_t withDMA;
+	uint8_t spiRdy;
+	uint8_t withDMA;
 
-	extern void spi_ssd1306_Reset();
-	extern void spi_ssd1306_WriteCmds(uint8_t *cmds, size_t sz);
-	extern void spi_ssd1306_WriteData(const char *buf, size_t sz, uint8_t with);
-	extern void spi_ssd1306_ls(uint8_t cy);
-	extern void spi_ssd1306_shift(uint8_t on_off);
-	extern void spi_ssd1306_on(uint8_t flag);
-	extern void spi_ssd1306_init();
-	extern void spi_ssd1306_invert();
-	extern void spi_ssd1306_clear();
-	extern void spi_ssd1306_pattern();
-	extern void spi_ssd1306_contrast(uint8_t value);
-	extern void spi_ssd1306_clear_line(uint8_t cy);
-	extern void spi_ssd1306_text_xy(const char *stroka, uint8_t cx, uint8_t cy);
-	extern void spi_ssd1306_text(const char *stroka);
+	void spi_ssd1306_Reset();
+	void spi_ssd1306_WriteCmds(uint8_t *cmds, size_t sz);
+	void spi_ssd1306_WriteData(const char *buf, size_t sz, uint8_t with);
+	void spi_ssd1306_shift(uint8_t cy, uint8_t on_off);
+	void spi_ssd1306_on(uint8_t flag);
+	void spi_ssd1306_init();
+	void spi_ssd1306_invert();
+	void spi_ssd1306_clear();
+	void spi_ssd1306_clear_from_to(uint8_t from, uint8_t to);
+	void spi_ssd1306_pattern();
+	void spi_ssd1306_contrast(uint8_t value);
+	void spi_ssd1306_clear_line(uint8_t cy);
+	void spi_ssd1306_text_xy(const char *stroka, uint8_t cx, uint8_t cy);
+	void spi_ssd1306_text(const char *stroka);
 #endif
 
 //------------------------------------------------------------------------

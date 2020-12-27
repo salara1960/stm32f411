@@ -144,24 +144,24 @@
 		int8_t   dig_H6;
 	} bmx280_calib_t;
 
-	extern info_bmp280_t info_bmp280;
-	extern uint8_t data_bmp280[25];
+	info_bmp280_t info_bmp280;
+	uint8_t data_bmp280[25];
 
-	extern HAL_StatusTypeDef i2c_test_bmx280(info_bmp280_t *info_bmp280, uint8_t chip_id);
-	extern HAL_StatusTypeDef i2c_reset_bmx280(uint8_t *chip_id);
-	extern bool i2c_getStat_bmx280();
+	HAL_StatusTypeDef i2c_test_bmx280(info_bmp280_t *info_bmp280, uint8_t chip_id);
+	HAL_StatusTypeDef i2c_reset_bmx280(uint8_t *chip_id);
+	bool i2c_getStat_bmx280();
 #ifdef SET_COMPAS_BLOCK
-	extern HAL_StatusTypeDef i2c_read_bmx280(uint8_t reg, uint8_t *data_rd, size_t size);
-	extern bool bmx280_readCalibrationData(uint8_t chip_id);
+	HAL_StatusTypeDef i2c_read_bmx280(uint8_t reg, uint8_t *data_rd, size_t size);
+	bool bmx280_readCalibrationData(uint8_t chip_id);
 #else
-	extern HAL_StatusTypeDef i2c_read_data_bmx280(uint8_t *data_rd, size_t size);
-	extern HAL_StatusTypeDef i2c_test_ready_bmx280(info_bmp280_t *info_bmp280);
-	extern HAL_StatusTypeDef bmx280_readCalibr1Data(uint8_t chip_id);
-	extern void bmx280_calcCalibr1Data(uint8_t chip_id);
-	extern HAL_StatusTypeDef bmx280_readCalibr2Data();
-	extern void bmx280_calcCalibr2Data();
+	HAL_StatusTypeDef i2c_read_data_bmx280(uint8_t *data_rd, size_t size);
+	HAL_StatusTypeDef i2c_test_ready_bmx280(info_bmp280_t *info_bmp280);
+	HAL_StatusTypeDef bmx280_readCalibr1Data(uint8_t chip_id);
+	void bmx280_calcCalibr1Data(uint8_t chip_id);
+	HAL_StatusTypeDef bmx280_readCalibr2Data();
+	void bmx280_calcCalibr2Data();
 #endif
-	extern void bmx280_CalcAll(result_t *ssen, int32_t chip_id);//, int32_t tp, uint32_t pp, uint32_t hh);
+	void bmx280_CalcAll(result_t *ssen, int32_t chip_id);//, int32_t tp, uint32_t pp, uint32_t hh);
 
 #endif
 

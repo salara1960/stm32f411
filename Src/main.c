@@ -40,8 +40,8 @@
 #define MAX_TMP_SIZE  256
 #define MAX_FIFO_SIZE  32
 #define MAX_UART_BUF  512
-#define MAX_VCC_BUF     4
-#define MAX_COMP_BUF    4
+#define MAX_VCC_BUF     8
+#define MAX_COMP_BUF    8
 
 
 #define _1ms 1
@@ -140,7 +140,7 @@ uint32_t tx_icnt = 0, rx_icnt = 0;
 	SPI_HandleTypeDef *portOLED = NULL;
 	char line[MAX_TMP_SIZE] = {0};
 	uint32_t spi_cnt;
-	const char *devName = " - STM32F411 - ";
+	const char *devName = " - STM32F411 -  ";
 	uint8_t shiftLine = 8;
 	uint8_t shiftStart = OLED_CMD_SHIFT_START; // activate shift
 	uint32_t tmr_shift = 0;
@@ -306,15 +306,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 1 */
 	if (htim->Instance == TIM2) {//1ms period
 		tik++;
-		one_sec++;
+		if (!(tik % (_10ms))) putMsg(msg_10ms);
 		//
+		one_sec++;
 		if (one_sec >= _1s) {
 			one_sec = 0;
 			seconds++;
 			putMsg(msg_sec);
 		}
-		//
-		if (!(tik % (_10ms))) putMsg(msg_5ms);
 		//
 	}
   /* USER CODE END Callback 1 */
@@ -326,8 +325,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	if (huart->Instance == USART1) {
 		rxData[rx_uk & 0x7f] = rxByte;
 		if (rxByte == '\n') {//end of line
-			rxData[(rx_uk+1) & 0x7f] = '\0';
-			strncpy(stx, rxData, rx_uk + 1);
+			rxData[(rx_uk + 1) & 0x7f] = '\0';
+			strcpy(stx, rxData);//, rx_uk + 1);
 			putMsg(msg_rxDone);
 
 			rx_uk = 0;
@@ -655,17 +654,18 @@ int main(void)
 #ifdef SET_OLED_SPI
     portOLED = &hspi4;
     spi_ssd1306_Reset();
-    spi_ssd1306_on(1);//screen ON
+    //spi_ssd1306_on(1);//screen ON
     spi_ssd1306_init();//screen INIT
     spi_ssd1306_pattern();//set any params for screen
     //spi_ssd1306_invert();
     spi_ssd1306_clear();//clear screen
 
     shiftLine = 8;
-    spi_ssd1306_text_xy(devName, 1, shiftLine);
-    shiftStart = OLED_CMD_SHIFT_START; // activate shift
-    spi_ssd1306_ls(shiftLine);
-    putMsg(msg_shiftEvent);
+    shiftStart = OLED_CMD_SHIFT_STOP;//ART; // activate shift
+//    spi_ssd1306_text_xy(devName, 1, shiftLine);
+    //putMsg(msg_shiftEvent);
+
+    uint8_t sfst = 1;
 #endif
 
 
@@ -698,9 +698,9 @@ int main(void)
     evt = msg_i2c;
 #endif
 
-    uint32_t cikl_out = _4s;
+    uint32_t cikl_out = _5s;
     tmr_out = getTimer(_500ms);
-    next = getTimer(_1ms);
+    next = getTimer(0);
 
     putMsg(evt);
 
@@ -726,8 +726,7 @@ int main(void)
 		    	startADC = 1;
 		    }
 		    break;
-		    case msg_5ms:
-		    	//HAL_GPIO_TogglePin(STROB_GPIO_Port, STROB_Pin);
+		    case msg_10ms:
 		    	schMS++;
 		    	if (!(schMS % (_100ms))) {// 100ms
 		    		if (startADC) HAL_ADC_Start_IT(portADC);
@@ -751,10 +750,17 @@ int main(void)
 		    	sec_to_str_time(line);
 		    	sprintf(line+strlen(line), "\n devError:0x%02X\n  VCC:%.3fV\n", devError, VccF);
 #ifdef SET_BMx280
-		    	sprintf(line+strlen(line), " pres:%.2fmmHg\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
+		    	sprintf(line+strlen(line), "  pres:%.2fmm\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
 		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
 #endif
 		    	sprintf(line+strlen(line), "  azimut:%u%c\n", compData.angleHMC, gradus);
+		    	////spi_ssd1306_clear_from_to(1, 2);
+		    	//spi_ssd1306_text_xy(line, 2, 1);
+		    	if (sfst) {
+		    		sfst = 0;
+		    		sprintf(line+strlen(line), "%s", devName);
+		    		putMsg(msg_shiftEvent);
+		    	}
 		    	spi_ssd1306_text_xy(line, 2, 1);
 #endif
 		    	//
@@ -763,16 +769,7 @@ int main(void)
 		    			tmr_out = 0;
 		    			//
 		    			putMsg(msg_out);
-		    			//Report(NULL, 1, "%s\r\n", printOut(tmp));
-		    			//tmr_out = getTimer(cikl_out);
 		    			//
-		    		}
-		    	}
-		    	//
-		    	if (tmr_shift) {
-		    		if (chkTimer(tmr_shift)) {
-		    			tmr_shift = 0;
-		    			putMsg(msg_shiftEvent);
 		    		}
 		    	}
 		    break;
@@ -805,24 +802,25 @@ int main(void)
 			break;
 			case msg_shiftEvent:
 #ifdef SET_OLED_SPI
-				spi_ssd1306_shift(shiftStart);
+				STROB_DOWN();
+					spi_ssd1306_shift(shiftLine, shiftStart);
+				STROB_UP();
 				if (shiftStart == OLED_CMD_SHIFT_STOP) {
 					spi_ssd1306_clear_line(shiftLine);
 					spi_ssd1306_text_xy(devName, 1, shiftLine);
 				}
 #endif
-				putMsg(msg_out);
 			break;
 			case msg_out:
-				Report(NULL, 1, "%s\r\n", printOut(tmp));
 				tmr_out = getTimer(cikl_out);
+				Report(NULL, 1, "%s\r\n", printOut(tmp));
 			break;
 #ifndef SET_COMPAS_BLOCK
 			case msg_i2c:
 				switch (siCmd) {
 					case msg_startCompas:
 						if (chkTimer(next)) {
-							STROB_DOWN();
+							//STROB_DOWN();
 							//
 							msBegin = HAL_GetTick();
 							next = 0;
@@ -982,7 +980,7 @@ int main(void)
 #endif
 				putMsg(evt);
 				//
-				STROB_UP();
+				//STROB_UP();
 			break;
 		}
 
@@ -1203,17 +1201,21 @@ static void MX_SPI4_Init(void)
 
   /* USER CODE BEGIN SPI4_Init 1 */
 	// for 100 MHz clock :
+	// _2 - 50MHz
+	// _4 - 25MHz
+	// _8 - 12.5MHz
 	// hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16; - 6.25 Mbits/s
+	// _32 - 3.125MHz
   /* USER CODE END SPI4_Init 1 */
   /* SPI4 parameter configuration*/
   hspi4.Instance = SPI4;
   hspi4.Init.Mode = SPI_MODE_MASTER;
   hspi4.Init.Direction = SPI_DIRECTION_2LINES;
   hspi4.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi4.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi4.Init.CLKPolarity = SPI_POLARITY_HIGH;
   hspi4.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi4.Init.NSS = SPI_NSS_SOFT;
-  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;//_16
   hspi4.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi4.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi4.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;

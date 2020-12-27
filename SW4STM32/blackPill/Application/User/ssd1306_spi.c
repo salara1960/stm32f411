@@ -56,25 +56,29 @@ void spi_ssd1306_WriteData(const char *buf, size_t sz, uint8_t with)
 	}
 }
 //-----------------------------------------------------------------------------------------
-void spi_ssd1306_ls(uint8_t cy)//left shift string in line cy(1..8)
+void spi_ssd1306_shift(uint8_t cy, uint8_t on_off)//0x2e - deactivate, 0x2f - activate
 {
 	uint8_t dat[] = {OLED_CONTROL_BYTE_CMD_STREAM,
-			         0x27,//to left shift
-					 0,// Dummy
-					 cy - 1,//Start page
-					 OLED_TIME_INTERVAL,//Time Interval as 2 frames
-					 cy - 1,//Stop page
-					 0,//Dummy
-					 0xff};//Dummy
+						OLED_LEFT_HORIZONTAL_SCROLL,//to left shift
+						OLED_DUMMY_BYTE,// Dummy
+						cy - 1,//Start page
+						OLED_TIME_INTERVAL,//Time Interval as 2 frames
+						cy - 1,//Stop page
+						OLED_DUMMY_BYTE,//Dummy
+						0xff,
+						OLED_CMD_SHIFT_START};
+	uint8_t len = sizeof(dat);
+	if (on_off == OLED_CMD_SHIFT_STOP) {
+		dat[0] = OLED_CONTROL_BYTE_CMD_SINGLE;
+		dat[1] = OLED_CMD_SHIFT_STOP;
+		len = 2;
+	}
 
+	spi_ssd1306_WriteCmds(dat, len);
 
-	spi_ssd1306_WriteCmds(dat, sizeof(dat));
-}
-//-----------------------------------------------------------------------------------------
-void spi_ssd1306_shift(uint8_t on_off)//0x2e - deactivate, 0x2f - activate
-{
-	uint8_t dat[] = {OLED_CONTROL_BYTE_CMD_SINGLE, on_off};
-	spi_ssd1306_WriteCmds(dat, sizeof(dat));
+	//dat[0] = OLED_CONTROL_BYTE_CMD_SINGLE;
+	//dat[1] = on_off;
+	//spi_ssd1306_WriteCmds(dat, 2);
 }
 //-----------------------------------------------------------------------------------------
 void spi_ssd1306_on(unsigned char flag)
@@ -101,10 +105,42 @@ uint8_t dat[] = {
 	OLED_CMD_SET_PAGE_RANGE,     //0x22
 	0x00,
 	0x07,
+	OLED_CMD_SHIFT_STOP,
 	OLED_CMD_DISPLAY_ON,         //0xAF
 	spi_invert
 };
-
+/*
+	uint8_t dat[] = {
+		OLED_CONTROL_BYTE_CMD_STREAM,//0x00
+		0xAE, // Display off
+	    0x20, // Set Memory Addressing Mode
+	    0x10, // 00,Horizontal Addressing Mode;01,Vertical Addressing Mode;10,Page Addressing Mode (RESET);11,Invalid
+	    0xB0, // Set Page Start Address for Page Addressing Mode,0-7
+	    0xC8, // Set COM Output Scan Direction
+	    0x00, // Set low column address
+	    0x10, // Set high column address
+	    0x40, // Set start line address
+	    0x81, // set contrast control register
+	    0xFF,
+		0xA1, // Set segment re-map 0 to 127
+	    0xA6, // Set normal display
+	    0xA8, // Set multiplex ratio(1 to 64)
+	    0x3F,
+	    0xA4, // 0xa4,Output follows RAM content;0xa5,Output ignores RAM content
+	    0xD3, // Set display offset
+	    0x00, // No offset
+	    0xD5, // Set display clock divide ratio/oscillator frequency
+	    0xF0, // Set divide ratio
+	    0xD9, // Set pre-charge period
+	    0x22,
+	    0xDA, // Set com pins hardware configuration
+	    0x12,
+	    0xDB, // Set vcomh
+	    0x20, // 0x20,0.77xVcc
+	    0x8D, // Set DC-DC enable
+	    0x14, //
+	    0xAF};// Turn on SSD1306 panel
+*/
 	spi_ssd1306_WriteCmds(dat, sizeof(dat));
 }
 //-----------------------------------------------------------------------------------------
@@ -122,11 +158,25 @@ uint8_t dat[] = {OLED_CONTROL_BYTE_CMD_SINGLE, 0};
 //-----------------------------------------------------------------------------------------
 void spi_ssd1306_clear()
 {
-uint8_t i, dat[] = {OLED_CONTROL_BYTE_CMD_SINGLE, 0}, zero[129] = {0};
+uint8_t dat[] = {OLED_CONTROL_BYTE_CMD_SINGLE, 0};
+uint8_t zero[BUF_LINE_SIZE] = {0};
+
+    for (uint8_t i = 0; i < 8; i++) {
+    	dat[1] = 0xB0 | i;
+    	spi_ssd1306_WriteCmds(dat, sizeof(dat));
+    	spi_ssd1306_WriteData((const char *)zero, sizeof(zero), 0);
+    }
+}
+//-----------------------------------------------------------------------------------------
+void spi_ssd1306_clear_from_to(uint8_t from, uint8_t to)
+{
+uint8_t i;
+uint8_t dat[] = {OLED_CONTROL_BYTE_CMD_SINGLE, 0};
+uint8_t zero[BUF_LINE_SIZE] = {0};
 
     zero[0] = OLED_CONTROL_BYTE_DATA_STREAM;
 
-    for (i = 0; i < 8; i++) {
+    for (i = from - 1; i < to; i++) {
     	dat[1] = 0xB0 | i;
     	spi_ssd1306_WriteCmds(dat, sizeof(dat));
     	spi_ssd1306_WriteData((const char *)zero, sizeof(zero), 0);
@@ -139,7 +189,7 @@ uint8_t i, dat[] = {OLED_CONTROL_BYTE_CMD_SINGLE, 0};
 uint8_t buf[129];
 
     buf[0] = OLED_CONTROL_BYTE_DATA_STREAM;
-    for (i = 1; i < 129; i++) buf[i] = 0xFF >> (i % 8);
+    for (i = 1; i < BUF_LINE_SIZE; i++) buf[i] = 0xFF >> (i % 8);
     for (i = 0; i < 8; i++) {
     	dat[1] = 0xB0 | i;
     	spi_ssd1306_WriteCmds(dat, sizeof(dat));
