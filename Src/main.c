@@ -156,7 +156,7 @@ uint32_t tx_icnt = 0, rx_icnt = 0;
 	char bmxName[16] = {0};
 #endif
 
-compas_data_t compData = {0, 0.0};
+compas_data_t compData = {0, 0};
 I2C_HandleTypeDef *portHMC = NULL;
 
 
@@ -168,13 +168,15 @@ uint8_t startADC = 1;
 uint16_t VccBuf[MAX_VCC_BUF] = {0};//буфер для накопления данных перед усреднением
 uint8_t VccValCounter = 0;
 
-uint16_t CompBuf[MAX_COMP_BUF] = {0};//буфер для накопления данных перед усреднением
+float CompBuf[MAX_COMP_BUF] = {0};//буфер для накопления данных перед усреднением
 uint8_t CompValCounter = 0;
 
 uint32_t one_sec = 0;
 uint32_t seconds = 0;
 volatile uint8_t devError = 0;
 uint32_t tmr_out = 0;
+uint32_t errStatCnt = 0;
+uint32_t cikl_out = _5s;
 
 #ifdef MIC_PRESENT
 	volatile uint8_t enEXT3 = 1;
@@ -547,7 +549,7 @@ int8_t i;
     return VccValCounter;
 }
 //-------------------------------------------------------------------------------------------
-uint8_t CompAddVal(uint16_t value)
+uint8_t CompAddVal(float value)
 {
 int8_t i;
 
@@ -572,17 +574,16 @@ void procCompas()
 //-------------------------------------------------------------------------------------------
 char *printOut(char *tmp)
 {
-	sprintf(tmp, " | tik=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
+	sprintf(tmp, " | ms=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
 	if (devError) sprintf(tmp+strlen(tmp), " devError:0x%02X", devError);
 	sprintf(tmp+strlen(tmp), " | Vcc=%.3fV", VccF);
 #ifdef SET_BMx280
-	sprintf(tmp+strlen(tmp)," | %s: ready=%d pres=%.2fmmHg temp=%.2fC",
-			bmxName, bStat, sensors.bmx_pres, sensors.bmx_temp);
+	sprintf(tmp+strlen(tmp)," | %s: pres=%.2fmmHg temp=%.2fC",
+			bmxName, sensors.bmx_pres, sensors.bmx_temp);
 	if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f%%", sensors.bmx_humi);
 #endif
 	//compas_stat_t *cStat = (compas_stat_t *)confRegHmc;
-	sprintf(tmp+strlen(tmp), " | QMC5883L: ready=%u azimut=%u temp=%.2f",
-								cStat,
+	sprintf(tmp+strlen(tmp), " | QMC5883L: azimut=%.2fC temp2=%.2fC",
 			    				compData.angleHMC,
 			    				compData.tempHMC);//, xyz->x, xyz->y, xyz->z);
 	return &tmp[0];
@@ -630,6 +631,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
 
+
   	// start timer1 + interrupt
 	HAL_TIM_Base_Start(&htim2);
 	HAL_TIM_Base_Start_IT(&htim2);
@@ -638,6 +640,7 @@ int main(void)
 
 	portADC = &hadc1;
 	if (startADC) HAL_ADC_Start_IT(portADC);
+
 
 	set_Date(epoch);
 	setSec(get_DateTime());
@@ -696,11 +699,13 @@ int main(void)
 #else
     siCmd = msg_startCompas;
     evt = msg_i2c;
+    next = getTimer(_100ms);
 #endif
 
-    uint32_t cikl_out = _5s;
-    tmr_out = getTimer(_500ms);
+
+    tmr_out = getTimer(_1s);
     next = getTimer(0);
+    errStatCnt = 0;
 
     putMsg(evt);
 
@@ -753,7 +758,7 @@ int main(void)
 		    	sprintf(line+strlen(line), "  pres:%.2fmm\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
 		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
 #endif
-		    	sprintf(line+strlen(line), "  azimut:%u%c\n", compData.angleHMC, gradus);
+		    	sprintf(line+strlen(line), " azimut:%.2f%c\n", compData.angleHMC, gradus);
 		    	////spi_ssd1306_clear_from_to(1, 2);
 		    	//spi_ssd1306_text_xy(line, 2, 1);
 		    	if (sfst) {
@@ -774,7 +779,7 @@ int main(void)
 		    	}
 		    break;
 			case msg_rxDone:
-				Report(NULL, 0, "%s", stx);
+				Report(NULL, 0, stx);
 				if ((uk = strstr(stx, "epoch=")) != NULL) {
 					uk += 6;
 					if (strlen(uk) >= 10) {
@@ -790,6 +795,9 @@ int main(void)
 					}
 				} else if ((uk = strstr(stx, "rst")) != NULL) {
 					putMsg(msg_rst);
+				} else if ((uk = strstr(stx, "period=")) != NULL) {
+					int val = atoi(uk + 7);
+					if ((val > 0) && (val <= 30)) cikl_out = val * 1000;
 				} else if ((uk = strstr(stx, "shift")) != NULL) {
 					if (shiftStart == OLED_CMD_SHIFT_STOP) shiftStart = OLED_CMD_SHIFT_START;
 					                                  else shiftStart = OLED_CMD_SHIFT_STOP;
@@ -836,14 +844,14 @@ int main(void)
 						//STROB_DOWN();
 						//
 						if (CompAddVal(COPMAS_CalcAngle()) == MAX_COMP_BUF) {//в окне накоплено MAX_VCC_BUF выборок -> фильтрация !
-							uint16_t sum = 0;
+							float sum = 0;
 							for (int8_t j = 0; j < MAX_COMP_BUF; j++) sum += CompBuf[j];
 							sum /= MAX_COMP_BUF;
 							compData.angleHMC = sum;
 						}
 						//
 						siCmd = msg_empty;
-						next = getTimer(0);
+						next = 0;
 						putMsg(msg_nextSens);
 						//
 						//STROB_UP();
@@ -860,9 +868,14 @@ int main(void)
 						//STROB_DOWN();
 						bStat = i2c_getStat_bmx280();
 						if (!bStat) {
-							//next = getTimer(_1ms);
-							siCmd = msg_rdyTest;
-							putMsg(msg_i2c);
+							errStatCnt++;
+							if (errStatCnt < 10) {
+								siCmd = msg_rdyTest;
+								putMsg(msg_i2c);
+							} else {
+								devError |= devI2C1;
+								errStatCnt = 0;
+							}
 							break;
 						}
 						//
@@ -918,7 +931,7 @@ int main(void)
 
 					//
 					if (CompAddVal(COPMAS_CalcAngle()) == MAX_COMP_BUF) {//в окне накоплено MAX_VCC_BUF выборок -> фильтрация !
-						uint16_t sum = 0;
+						float sum = 0;
 						for (int8_t j = 0; j < MAX_COMP_BUF; j++) sum += CompBuf[j];
 						sum /= MAX_COMP_BUF;
 						compData.angleHMC = sum;
@@ -938,7 +951,7 @@ int main(void)
 #ifdef SET_BMx280
 					//
 					if (i2c_test_bmx280(&info_bmp280, reg_id) != HAL_OK) devError |= devI2C1;
-					next = getTimer(_1ms);
+					//next = getTimer(_1ms);
 	#ifdef SET_COMPAS_BLOCK
 					bStat = i2c_getStat_bmx280();
 					if (!bStat) {
@@ -963,10 +976,10 @@ int main(void)
 			case msg_endNext:
 				//
 				msCnt = HAL_GetTick() - msBegin;
-				if (msCnt < _500ms) {
-					msCnt = _500ms - msCnt;
+				if (msCnt < _250ms) {
+					msCnt = _250ms - msCnt;
 				} else {
-					msCnt -= _500ms;
+					msCnt -= _250ms;
 				}
 				if (!msCnt) msCnt++;
 				next = getTimer(msCnt);

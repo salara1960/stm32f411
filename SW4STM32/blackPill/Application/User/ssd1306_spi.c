@@ -76,9 +76,6 @@ void spi_ssd1306_shift(uint8_t cy, uint8_t on_off)//0x2e - deactivate, 0x2f - ac
 
 	spi_ssd1306_WriteCmds(dat, len);
 
-	//dat[0] = OLED_CONTROL_BYTE_CMD_SINGLE;
-	//dat[1] = on_off;
-	//spi_ssd1306_WriteCmds(dat, 2);
 }
 //-----------------------------------------------------------------------------------------
 void spi_ssd1306_on(unsigned char flag)

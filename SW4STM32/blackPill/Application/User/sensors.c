@@ -62,7 +62,7 @@ HAL_StatusTypeDef COPMAS_GetAngle()
 	return rt;
 }
 //-----------------------------------------------------------------------------
-uint16_t COPMAS_CalcAngle()
+float COPMAS_CalcAngle()
 {
 double azimut, x, y, con = 2 * M_PI;
 
@@ -79,7 +79,7 @@ double azimut, x, y, con = 2 * M_PI;
 	else
 	if (azimut > con) azimut -= con;
 
-	return (int16_t)(azimut * (180 / M_PI));
+	return (float)(azimut * (180 / M_PI));
 }
 //-----------------------------------------------------------------------------
 

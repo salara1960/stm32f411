@@ -89,7 +89,7 @@ enum {
 #endif
 
 typedef struct compas_data_t {
-	uint16_t angleHMC;
+	float angleHMC;
 	float tempHMC;
 } compas_data_t;
 

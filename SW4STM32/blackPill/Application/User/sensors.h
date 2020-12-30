@@ -75,7 +75,7 @@
 	HAL_StatusTypeDef COPMAS_Reset();
 	uint8_t COPMAS_ReadStat();
 	HAL_StatusTypeDef COPMAS_GetAngle();
-	uint16_t COPMAS_CalcAngle();
+	float COPMAS_CalcAngle();
 
 
 
