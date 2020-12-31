@@ -637,18 +637,15 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim2);
     //"start" rx_interrupt
 	HAL_UART_Receive_IT(&huart1, (uint8_t *)&rxByte, 1);
-
+	//"start" ADC interrupt
 	portADC = &hadc1;
 	if (startADC) HAL_ADC_Start_IT(portADC);
 
 
-	set_Date(epoch);
-	setSec(get_DateTime());
-	//setSec((uint32_t)epoch);
-
 	char *uk = NULL, *uke = NULL;
 	evt_t evt;
 	uint32_t schMS = 0;
+	uint8_t setRTC = 0;
 
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
@@ -733,6 +730,13 @@ int main(void)
 		    break;
 		    case msg_10ms:
 		    	schMS++;
+		    	//
+		    	if (!setRTC) {
+		    		setRTC = 1;
+		    		set_Date(epoch);
+		    		setSec(get_DateTime());
+		    	}
+		    	//
 		    	if (!(schMS % (_100ms))) {// 100ms
 		    		if (startADC) HAL_ADC_Start_IT(portADC);
 		    		if (devError) ON_ERR_LED()
@@ -745,6 +749,15 @@ int main(void)
 						}
 					}
 #endif
+		    	}
+		    	//
+		    	if (tmr_out) {
+		    		if (chkTimer(tmr_out)) {
+		    			tmr_out = 0;
+		    			//
+		    			putMsg(msg_out);
+		    			//
+		    		}
 		    	}
 		    	//
 		    break;
@@ -768,7 +781,7 @@ int main(void)
 		    	}
 		    	spi_ssd1306_text_xy(line, 2, 1);
 #endif
-		    	//
+		    	/*
 		    	if (tmr_out) {
 		    		if (chkTimer(tmr_out)) {
 		    			tmr_out = 0;
@@ -777,6 +790,7 @@ int main(void)
 		    			//
 		    		}
 		    	}
+		    	*/
 		    break;
 			case msg_rxDone:
 				Report(NULL, 0, stx);
@@ -797,7 +811,7 @@ int main(void)
 					putMsg(msg_rst);
 				} else if ((uk = strstr(stx, "period=")) != NULL) {
 					int val = atoi(uk + 7);
-					if ((val > 0) && (val <= 30)) cikl_out = val * 1000;
+					if ((val > 0) && (val <= 10000)) cikl_out = val;
 				} else if ((uk = strstr(stx, "shift")) != NULL) {
 					if (shiftStart == OLED_CMD_SHIFT_STOP) shiftStart = OLED_CMD_SHIFT_START;
 					                                  else shiftStart = OLED_CMD_SHIFT_STOP;
