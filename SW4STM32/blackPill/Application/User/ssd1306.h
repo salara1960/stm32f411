@@ -50,7 +50,7 @@
 #define OLED_CMD_SET_CHARGE_PUMP        0x8D    // follow with 0x14
 
 //
-#define OLED_TIME_INTERVAL              0x07    // 0 -   5 frame
+#define OLED_TIME_INTERVAL              0x00    // 0 -   5 frame
 												// 1 -  64 frame
                                                 // 2 - 128 frame
                                                 // 3 - 256 frame

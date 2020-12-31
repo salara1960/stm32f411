@@ -140,7 +140,7 @@ uint32_t tx_icnt = 0, rx_icnt = 0;
 	SPI_HandleTypeDef *portOLED = NULL;
 	char line[MAX_TMP_SIZE] = {0};
 	uint32_t spi_cnt;
-	const char *devName = " - STM32F411 -  ";
+	char devName[32] = {0};//" - STM32F411 -  ";
 	uint8_t shiftLine = 8;
 	uint8_t shiftStart = OLED_CMD_SHIFT_START; // activate shift
 	uint32_t tmr_shift = 0;
@@ -630,7 +630,7 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
-
+    sprintf(devName, "- Speed:%u -", huart1.Init.BaudRate);
 
   	// start timer1 + interrupt
 	HAL_TIM_Base_Start(&htim2);
@@ -807,6 +807,9 @@ int main(void)
 							set_Date((time_t)cep);
 						}
 					}
+				} else if ((uk = strstr(stx, "get")) != NULL) {
+					//putMsg(msg_out);
+					tmr_out = getTimer(_1ms);
 				} else if ((uk = strstr(stx, "rst")) != NULL) {
 					putMsg(msg_rst);
 				} else if ((uk = strstr(stx, "period=")) != NULL) {
@@ -1242,7 +1245,7 @@ static void MX_SPI4_Init(void)
   hspi4.Init.CLKPolarity = SPI_POLARITY_HIGH;
   hspi4.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi4.Init.NSS = SPI_NSS_SOFT;
-  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;//_16
+  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
   hspi4.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi4.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi4.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
