@@ -156,7 +156,7 @@ uint32_t tx_icnt = 0, rx_icnt = 0;
 	char bmxName[16] = {0};
 #endif
 
-compas_data_t compData = {0, 0};
+compas_data_t compData = {0, 0, 0, 0, 0};
 I2C_HandleTypeDef *portHMC = NULL;
 
 
@@ -583,8 +583,9 @@ char *printOut(char *tmp)
 	if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f%%", sensors.bmx_humi);
 #endif
 	//compas_stat_t *cStat = (compas_stat_t *)confRegHmc;
-	sprintf(tmp+strlen(tmp), " | QMC5883L: azimut=%.2fC temp2=%.2fC",
+	sprintf(tmp+strlen(tmp), " | QMC5883L: azimut=%.2fC xyz=%d,%d,%d temp2=%.2fC",
 			    				compData.angleHMC,
+								compData.x, compData.y, compData.z,
 			    				compData.tempHMC);//, xyz->x, xyz->y, xyz->z);
 	return &tmp[0];
 }

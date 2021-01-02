@@ -64,20 +64,37 @@ HAL_StatusTypeDef COPMAS_GetAngle()
 //-----------------------------------------------------------------------------
 float COPMAS_CalcAngle()
 {
-double azimut, x, y, con = 2 * M_PI;
+double azimut, x, y, z, con = 2 * M_PI;
 
 	xyz = (xyz_t *)&magBuf[0];
 
 	uint16_t tempHMCraw = xyz->temp & 0x3fff;
 	compData.tempHMC = (float)(tempHMCraw) / 520.0;
 
-	x = xyz->x;// * 0.92;
-	y = xyz->y;// * 0.92;
+	x = xyz->x * 0.92;
+	y = xyz->y * 0.92;
+	z = xyz->z * 0.92;
+
+	//compData.x = (int)x;
+	//compData.y = (int)y;
+	//compData.z = (int)z;
 
 	azimut = atan2(y, x);
 	if (azimut < 0) azimut += con;
 	else
 	if (azimut > con) azimut -= con;
+
+	float VX = atan2(x, z) / 0.0174532925;
+	if (VX < 0) VX += 360;
+	VX = 360 - VX - 180;
+	if (VX < 0) VX += 360;
+	compData.x = (int)VX;
+	//
+	float VY = atan2(y, z) / 0.0174532925;
+	if (VY < 0) VY += 360;
+	VY = 360 - VY - 180;
+	if (VY < 0) VY += 360;
+	compData.y = (int)VY;
 
 	return (float)(azimut * (180 / M_PI));
 }

@@ -52,11 +52,12 @@
   в USART1, например :
 
 ```
-24.12 13:53:25 | tik=461001 fifo:1/3 | Vcc=3.281V | BME280: ready=1 pres=744.04mmHg temp=26.84C humi=35.78% | QMC5883L: ready=1 azimut=284
-24.12 13:53:30 | tik=466001 fifo:1/3 | Vcc=3.283V | BME280: ready=1 pres=744.00mmHg temp=26.84C humi=35.75% | QMC5883L: ready=1 azimut=285
-24.12 13:53:35 | tik=471001 fifo:1/3 | Vcc=3.280V | BME280: ready=1 pres=744.08mmHg temp=26.84C humi=35.71% | QMC5883L: ready=1 azimut=284
-24.12 13:53:40 | tik=476001 fifo:1/3 | Vcc=3.281V | BME280: ready=1 pres=743.95mmHg temp=26.83C humi=35.68% | QMC5883L: ready=1 azimut=284
-24.12 13:53:45 | tik=481001 fifo:1/3 | Vcc=3.282V | BME280: ready=1 pres=743.99mmHg temp=26.83C humi=35.65% | QMC5883L: ready=1 azimut=284
+02.01 22:10:13 | ms=56010 fifo:1/3 | Vcc=3.299V | BME280: pres=760.79mmHg temp=26.18C humi=38.41% | QMC5883L: azimut=337.93C xyz=21,351,0
+02.01 22:10:14 | ms=57010 fifo:1/3 | Vcc=3.299V | BME280: pres=760.81mmHg temp=26.17C humi=38.36% | QMC5883L: azimut=338.28C xyz=20,351,0
+02.01 22:10:15 | ms=58010 fifo:1/3 | Vcc=3.299V | BME280: pres=760.80mmHg temp=26.18C humi=38.31% | QMC5883L: azimut=338.60C xyz=20,351,0
+02.01 22:10:16 | ms=59010 fifo:1/3 | Vcc=3.298V | BME280: pres=760.79mmHg temp=26.18C humi=38.23% | QMC5883L: azimut=338.43C xyz=20,350,0
+02.01 22:10:17 | ms=60010 fifo:1/3 | Vcc=3.298V | BME280: pres=760.81mmHg temp=26.17C humi=38.13% | QMC5883L: azimut=338.14C xyz=20,350,0
+02.01 22:10:18 | ms=61010 fifo:1/3 | Vcc=3.299V | BME280: pres=760.78mmHg temp=26.18C humi=38.13% | QMC5883L: azimut=337.80C xyz=21,350,0
 ```
 
   Часть этих данные (дата и время, код ошибки устройства, напряжение питания, атмосферное давление,

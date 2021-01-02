@@ -88,11 +88,15 @@ enum {
 	#define false 0
 #endif
 
-typedef struct compas_data_t {
+#pragma pack(push,1)
+typedef struct {
 	float angleHMC;
 	float tempHMC;
+	int x;
+	int y;
+	int z;
 } compas_data_t;
-
+#pragma pack(pop)
 
 volatile uint32_t tik;
 int siCmd;
