@@ -18,8 +18,137 @@ uint8_t	magBuf[MAG_BUF_SIZE] = {0};
 uint8_t cStat = 0;
 xyz_t *xyz = NULL;
 
+
 //******************************************************************************************
 
+#ifdef SET_MPU
+
+mpu_all_data_t mpu_all_data;
+mpu_data_t mpu_data;
+
+//-----------------------------------------------------------------------------
+HAL_StatusTypeDef mpuInit()
+{
+HAL_StatusTypeDef rt = HAL_OK;
+uint8_t devAddr = mpu_data.adr;
+
+	if (!devAddr) goto err;
+	devAddr <<= 1;
+	uint8_t byte;
+	//
+	//----- Wakeup MPU6050 -----
+	uint8_t dat[] = {MPU6050_PWR_MGMT_1, 0x00};
+	rt |= HAL_I2C_Master_Transmit(portMPU, devAddr, dat, 2, min_wait_ms);
+	if (rt != HAL_OK) goto err;
+	//--------------------------
+	//
+	// Set sample rate to 1kHz
+	dat[0] = MPU6050_SMPLRT_DIV;
+	dat[1] = SD_MPU6050_DataRate_1KHz;
+	rt |= HAL_I2C_Master_Transmit(portMPU, devAddr, dat, 2, min_wait_ms);
+	if (rt != HAL_OK) goto err;
+	//
+	// Config accelerometer
+	uint8_t AccelerometerSensitivity = SD_MPU6050_Accelerometer_2G;
+	rt |= HAL_I2C_Mem_Read(portMPU, devAddr, MPU6050_ACCEL_CONFIG, 1, &byte, 1, min_wait_ms);
+	if (rt != HAL_OK) goto err;
+	byte = (byte & 0xE7) | AccelerometerSensitivity << 3;
+	rt |= HAL_I2C_Mem_Write(portMPU, devAddr, MPU6050_ACCEL_CONFIG, 1, &byte, 1, min_wait_ms);
+	if (rt != HAL_OK) goto err;
+	// Set sensitivities for multiplying gyro and accelerometer data
+	switch (AccelerometerSensitivity) {
+		case SD_MPU6050_Accelerometer_2G:
+			mpu_data.Acce_Mult = 1.0 / MPU6050_ACCE_SENS_2;
+		break;
+		case SD_MPU6050_Accelerometer_4G:
+			mpu_data.Acce_Mult = 1.0 / MPU6050_ACCE_SENS_4;
+		break;
+		case SD_MPU6050_Accelerometer_8G:
+			mpu_data.Acce_Mult = 1.0 / MPU6050_ACCE_SENS_8;
+		break;
+		case SD_MPU6050_Accelerometer_16G:
+			mpu_data.Acce_Mult = 1.0 / MPU6050_ACCE_SENS_16;
+		break;
+	}
+	//
+	// Config Gyroscope
+	rt |= HAL_I2C_Mem_Read(portMPU, devAddr, MPU6050_GYRO_CONFIG, 1, &byte, 1, min_wait_ms);
+	if (rt != HAL_OK) goto err;
+	uint8_t GyroscopeSensitivity = SD_MPU6050_Gyroscope_250s;
+	byte = (byte & 0xE7) | GyroscopeSensitivity << 3;
+	rt |= HAL_I2C_Mem_Write(portMPU, devAddr, MPU6050_GYRO_CONFIG, 1, &byte, 1, min_wait_ms);
+	if (rt != HAL_OK) goto err;
+	switch (GyroscopeSensitivity) {
+		case SD_MPU6050_Gyroscope_250s:
+			mpu_data.Gyro_Mult = 1.0 / MPU6050_GYRO_SENS_250;
+		break;
+		case SD_MPU6050_Gyroscope_500s:
+			mpu_data.Gyro_Mult = 1.0 / MPU6050_GYRO_SENS_500;
+		break;
+		case SD_MPU6050_Gyroscope_1000s:
+			mpu_data.Gyro_Mult = 1.0 / MPU6050_GYRO_SENS_1000;
+		break;
+		case SD_MPU6050_Gyroscope_2000s:
+			mpu_data.Gyro_Mult = 1.0 / MPU6050_GYRO_SENS_2000;
+		break;
+	}
+
+	return HAL_OK;
+
+err:
+	devError |= devI2C1;
+	return rt;
+}
+//-----------------------------------------------------------------------------
+HAL_StatusTypeDef mpuID()
+{
+HAL_StatusTypeDef rt = HAL_OK;
+
+	rt = HAL_I2C_IsDeviceReady(portMPU, MPU6050_DEFAULT_ADDRESS, 2, 10);
+	if (rt == HAL_OK) {
+		uint8_t byte;
+		rt |= HAL_I2C_Mem_Read(portMPU, MPU6050_DEFAULT_ADDRESS, MPU6050_WHO_AM_I, 1, &byte, 1, min_wait_ms);
+		if (rt == HAL_OK) mpu_data.adr = byte;
+	}
+
+	if (rt) devError |= devI2C1;
+	return rt;
+}
+//-----------------------------------------------------------------------------
+HAL_StatusTypeDef mpuAllRead()
+{
+uint8_t adr = MPU6050_ACCEL_XOUT_H;
+
+	HAL_StatusTypeDef rt = HAL_I2C_Master_Transmit(portMPU, mpu_data.adr << 1, &adr, 1, min_wait_ms);
+	if (rt == HAL_OK) {
+		siCmd = msg_mpuAllReady;
+		rt |= HAL_I2C_Master_Receive_DMA(portMPU, mpu_data.adr << 1, (uint8_t *)&mpu_all_data, sizeof(mpu_all_data_t));
+	} else rt |= devI2C1;
+
+	devError |= rt;
+
+	return rt;
+}
+//-----------------------------------------------------------------------------
+void mpuConvData()
+{
+	mpu_data.xACCEL = htons(mpu_all_data.ACCEL_XOUT);
+	mpu_data.yACCEL = htons(mpu_all_data.ACCEL_YOUT);
+	mpu_data.zACCEL = htons(mpu_all_data.ACCEL_ZOUT);
+	mpu_data.TEMP   = (float)((int16_t)(htons(mpu_all_data.TEMP_OUT)) / 340.0 + 36.53);
+	mpu_data.xGYRO  = htons(mpu_all_data.GYRO_XOUT);
+	mpu_data.yGYRO  = htons(mpu_all_data.GYRO_YOUT);
+	mpu_data.zGYRO  = htons(mpu_all_data.GYRO_ZOUT);
+
+
+}
+//-----------------------------------------------------------------------------
+
+#endif
+
+//******************************************************************************************
+//******************************************************************************************
+//******************************************************************************************
 
 //-----------------------------------------------------------------------------
 HAL_StatusTypeDef COPMAS_Init()
@@ -64,27 +193,23 @@ HAL_StatusTypeDef COPMAS_GetAngle()
 //-----------------------------------------------------------------------------
 float COPMAS_CalcAngle()
 {
-double azimut, x, y, z, con = 2 * M_PI;
+double azimut, x, y, con = 2 * M_PI;
 
 	xyz = (xyz_t *)&magBuf[0];
 
 	uint16_t tempHMCraw = xyz->temp & 0x3fff;
 	compData.tempHMC = (float)(tempHMCraw) / 520.0;
 
-	x = xyz->x * 0.92;
-	y = xyz->y * 0.92;
-	z = xyz->z * 0.92;
-
-	//compData.x = (int)x;
-	//compData.y = (int)y;
-	//compData.z = (int)z;
+	x = xyz->x;// * 0.92;
+	y = xyz->y;// * 0.92;
+	//z = xyz->z;// * 0.92;
 
 	azimut = atan2(y, x);
 	if (azimut < 0) azimut += con;
 	else
 	if (azimut > con) azimut -= con;
 
-	float VX = atan2(x, z) / 0.0174532925;
+	/*float VX = atan2(x, z) / 0.0174532925;
 	if (VX < 0) VX += 360;
 	VX = 360 - VX - 180;
 	if (VX < 0) VX += 360;
@@ -94,7 +219,7 @@ double azimut, x, y, z, con = 2 * M_PI;
 	if (VY < 0) VY += 360;
 	VY = 360 - VY - 180;
 	if (VY < 0) VY += 360;
-	compData.y = (int)VY;
+	compData.y = (int)VY;*/
 
 	return (float)(azimut * (180 / M_PI));
 }

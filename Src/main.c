@@ -183,6 +183,14 @@ uint32_t cikl_out = _5s;
 	uint32_t tmrEXT3 = 0;
 #endif
 
+
+#ifdef SET_MPU
+	I2C_HandleTypeDef *portMPU = NULL;
+	uint32_t cntMPU = 0;
+	bool mpuPresent = false;
+#endif
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -359,6 +367,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		devError = devOK;
 		putMsg(msg_out);
 	}
+#ifdef SET_MPU
+	else if (GPIO_Pin == iEXTI4_Pin) {
+		putMsg(msg_iMPU);
+	}
+#endif
 #ifdef MIC_PRESENT
 	else if (GPIO_Pin == MIC_DIG_Pin) {
 		if (enEXT3) {
@@ -576,17 +589,20 @@ char *printOut(char *tmp)
 {
 	sprintf(tmp, " | ms=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
 	if (devError) sprintf(tmp+strlen(tmp), " devError:0x%02X", devError);
-	sprintf(tmp+strlen(tmp), " | Vcc=%.3fV", VccF);
+	sprintf(tmp+strlen(tmp), " | Vcc=%.3f", VccF);
 #ifdef SET_BMx280
-	sprintf(tmp+strlen(tmp)," | %s: pres=%.2fmmHg temp=%.2fC",
-			bmxName, sensors.bmx_pres, sensors.bmx_temp);
-	if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f%%", sensors.bmx_humi);
+	sprintf(tmp+strlen(tmp)," | %s: pres=%.2f temp=%.2f",
+							bmxName, sensors.bmx_pres, sensors.bmx_temp);
+	if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f", sensors.bmx_humi);
 #endif
 	//compas_stat_t *cStat = (compas_stat_t *)confRegHmc;
-	sprintf(tmp+strlen(tmp), " | QMC5883L: azimut=%.2fC xyz=%d,%d,%d temp2=%.2fC",
-			    				compData.angleHMC,
-								compData.x, compData.y, compData.z,
-			    				compData.tempHMC);//, xyz->x, xyz->y, xyz->z);
+	sprintf(tmp+strlen(tmp)," | QMC5883L: azimut=%.2f temp2=%.2f",
+			    			compData.angleHMC,
+							compData.tempHMC);
+	sprintf(tmp+strlen(tmp)," | MPU6050: temp3=%.2f Accel=%d,%d,%d Gyro=%d,%d,%d",
+							mpu_data.TEMP,
+							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL,
+							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
 	return &tmp[0];
 }
 //-------------------------------------------------------------------------------------------
@@ -686,6 +702,13 @@ int main(void)
 
 #endif
 
+#ifdef SET_MPU
+    portMPU = &hi2c1;
+    if (mpuID() == HAL_OK) {
+    	if (mpuInit() == HAL_OK) mpuPresent = true;
+    }
+#endif
+
 	portHMC = &hi2c1;
 	xyz = (xyz_t *)&magBuf[0];
 //	COPMAS_Reset();
@@ -767,14 +790,22 @@ int main(void)
 		    	//
 #ifdef SET_OLED_SPI
 		    	sec_to_str_time(line);
-		    	sprintf(line+strlen(line), "\n devError:0x%02X\n  VCC:%.3fV\n", devError, VccF);
+#ifdef SET_MPU
+		    	if (!devError) sprintf(line+strlen(line), "\n  VCC:%.3fv", VccF);
+		    	          else sprintf(line+strlen(line), "\n devError:0x%02X", devError);
+		    	if (mpuPresent) {
+		    		sprintf(line+strlen(line), "\n mpuTemp:%.2f%c\n", mpu_data.TEMP, gradus);
+		    	} else {
+		    		sprintf(line+strlen(line), "\n mpuTemp: ---\n");
+		    	}
+#else
+		    	sprintf(line+strlen(line), "\n  VCC:%.3fv\n devError:0x%02X\n", Vcc, devError);
+#endif
 #ifdef SET_BMx280
 		    	sprintf(line+strlen(line), "  pres:%.2fmm\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
 		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
 #endif
 		    	sprintf(line+strlen(line), " azimut:%.2f%c\n", compData.angleHMC, gradus);
-		    	////spi_ssd1306_clear_from_to(1, 2);
-		    	//spi_ssd1306_text_xy(line, 2, 1);
 		    	if (sfst) {
 		    		sfst = 0;
 		    		sprintf(line+strlen(line), "%s", devName);
@@ -782,16 +813,6 @@ int main(void)
 		    	}
 		    	spi_ssd1306_text_xy(line, 2, 1);
 #endif
-		    	/*
-		    	if (tmr_out) {
-		    		if (chkTimer(tmr_out)) {
-		    			tmr_out = 0;
-		    			//
-		    			putMsg(msg_out);
-		    			//
-		    		}
-		    	}
-		    	*/
 		    break;
 			case msg_rxDone:
 				Report(NULL, 0, stx);
@@ -828,9 +849,9 @@ int main(void)
 			break;
 			case msg_shiftEvent:
 #ifdef SET_OLED_SPI
-				STROB_DOWN();
+				//STROB_DOWN();
 					spi_ssd1306_shift(shiftLine, shiftStart);
-				STROB_UP();
+				//STROB_UP();
 				if (shiftStart == OLED_CMD_SHIFT_STOP) {
 					spi_ssd1306_clear_line(shiftLine);
 					spi_ssd1306_text_xy(devName, 1, shiftLine);
@@ -841,12 +862,17 @@ int main(void)
 				tmr_out = getTimer(cikl_out);
 				Report(NULL, 1, "%s\r\n", printOut(tmp));
 			break;
+#ifdef SET_MPU
+			case msg_iMPU:
+				cntMPU++;
+			break;
+#endif
 #ifndef SET_COMPAS_BLOCK
 			case msg_i2c:
 				switch (siCmd) {
 					case msg_startCompas:
 						if (chkTimer(next)) {
-							//STROB_DOWN();
+							STROB_DOWN();
 							//
 							msBegin = HAL_GetTick();
 							next = 0;
@@ -859,7 +885,6 @@ int main(void)
 					break;
 					case msg_getCompas:
 					{
-						//STROB_DOWN();
 						//
 						if (CompAddVal(COPMAS_CalcAngle()) == MAX_COMP_BUF) {//в окне накоплено MAX_VCC_BUF выборок -> фильтрация !
 							float sum = 0;
@@ -872,18 +897,14 @@ int main(void)
 						next = 0;
 						putMsg(msg_nextSens);
 						//
-						//STROB_UP();
 					}
 					break;
 					case msg_rdyTest:
-						//STROB_DOWN();
 						//
 						i2c_test_ready_bmx280(&info_bmp280);
 						//
-						//STROB_UP();
 					break;
 					case msg_rdyStat:
-						//STROB_DOWN();
 						bStat = i2c_getStat_bmx280();
 						if (!bStat) {
 							errStatCnt++;
@@ -899,42 +920,70 @@ int main(void)
 						//
 						if (i2c_read_data_bmx280(data_rdx, d_size) != HAL_OK) devError |= devI2C1;
 						//
-						//STROB_UP();
 					break;
 					case msg_readBMX:
-						//STROB_DOWN();
 						//
 						if (!bmxCalibr) bmx280_readCalibr1Data(reg_id);//goto read calibration data part 1
 						else {
 							bmx280_CalcAll(&sensors, reg_id);
+#ifdef SET_MPU
+							if (mpuPresent) {
+								siCmd = msg_mpuAllRead;
+								putMsg(msg_i2c);
+							} else putMsg(msg_endNext);
+#else
 							putMsg(msg_endNext);
+#endif
 						}
 						//
-						//STROB_UP();
 					break;
 					case msg_calibr1Done:
-						//STROB_DOWN();
 						//
 						bmx280_calcCalibr1Data(reg_id);
 						if (reg_id == BME280_SENSOR) {
 							bmx280_readCalibr2Data(reg_id);
 						} else {
 							bmx280_CalcAll(&sensors, reg_id);
+#ifdef SET_MPU
+							if (mpuPresent) {
+								siCmd = msg_mpuAllRead;
+								putMsg(msg_i2c);
+							} else putMsg(msg_endNext);
+#else
 							putMsg(msg_endNext);
+#endif
 						}
 						//
-						//STROB_UP();
 					break;
 					case msg_calibr2Done:
-						//STROB_DOWN();
 						//
 						if (reg_id == BME280_SENSOR) bmx280_calcCalibr2Data();
 						bmx280_CalcAll(&sensors, reg_id);
 						bmxCalibr = true;
+#ifdef SET_MPU
+						if (mpuPresent) {
+							siCmd = msg_mpuAllRead;
+							putMsg(msg_i2c);
+						} else putMsg(msg_endNext);
+#else
+						putMsg(msg_endNext);
+#endif
+						//
+					break;
+#ifdef SET_MPU
+					case msg_mpuAllRead:
+						//
+						mpuAllRead();//start read all data from adr 0x3b....(14 bytes)
+						//
+					break;
+					case msg_mpuAllReady:
+						//
+						mpuConvData();
+						STROB_UP();
 						putMsg(msg_endNext);
 						//
-						//STROB_UP();
 					break;
+#endif
 				}
 			break;
 #else
@@ -1194,21 +1243,21 @@ static void MX_RTC_Init(void)
 
   /** Initialize RTC and set the Time and Date 
   */
-  sTime.Hours = 0x0;
-  sTime.Minutes = 0x0;
-  sTime.Seconds = 0x0;
+  sTime.Hours = 0;
+  sTime.Minutes = 0;
+  sTime.Seconds = 0;
   sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
   sTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK)
   {
     Error_Handler();
   }
   sDate.WeekDay = RTC_WEEKDAY_MONDAY;
   sDate.Month = RTC_MONTH_JANUARY;
-  sDate.Date = 0x1;
-  sDate.Year = 0x0;
+  sDate.Date = 1;
+  sDate.Year = 0;
 
-  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK)
   {
     Error_Handler();
   }
@@ -1243,7 +1292,7 @@ static void MX_SPI4_Init(void)
   hspi4.Init.Mode = SPI_MODE_MASTER;
   hspi4.Init.Direction = SPI_DIRECTION_2LINES;
   hspi4.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi4.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi4.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi4.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi4.Init.NSS = SPI_NSS_SOFT;
   hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
@@ -1415,6 +1464,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(MIC_DIG_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : iEXTI4_Pin */
+  GPIO_InitStruct.Pin = iEXTI4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(iEXTI4_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pins : OLED_DC_Pin OLED_RST_Pin OLED_CS_Pin ERR_LED_Pin 
                            STROB_Pin */
   GPIO_InitStruct.Pin = OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|ERR_LED_Pin 
@@ -1437,6 +1492,9 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI3_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
 }
 

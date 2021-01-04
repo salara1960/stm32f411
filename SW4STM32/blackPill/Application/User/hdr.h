@@ -12,5 +12,6 @@
 #define SET_OLED_SPI
 //#define SET_COMPAS_BLOCK
 //#define MIC_PRESENT
+#define SET_MPU
 
 #endif /* APPLICATION_USER_HDR_H_ */

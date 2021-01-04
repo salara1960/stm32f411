@@ -52,6 +52,7 @@ extern "C" {
 
 #define DATA_LENGTH    8//256        //!<Data buffer length for test buffer
 
+
 typedef enum {
 	msg_empty = 0,
 	msg_10ms,//msg_1ms,
@@ -70,6 +71,9 @@ typedef enum {
 	msg_readBMX,
 	msg_calibr1Done,
 	msg_calibr2Done,
+	msg_iMPU,
+	msg_mpuAllRead,
+	msg_mpuAllReady,
 	msg_shiftEvent
 } evt_t;
 
@@ -92,9 +96,9 @@ enum {
 typedef struct {
 	float angleHMC;
 	float tempHMC;
-	int x;
-	int y;
-	int z;
+	//int x;
+	//int y;
+	//int z;
 } compas_data_t;
 #pragma pack(pop)
 
@@ -114,6 +118,9 @@ compas_data_t compData;
 	uint8_t data_rdx[DATA_LENGTH];
 #endif
 
+#ifdef SET_MPU
+	I2C_HandleTypeDef *portMPU;
+#endif
 
 //extern evt_t evt_fifo[MAX_FIFO_SIZE];
 //extern uint8_t rd_evt_adr, wr_evt_adr;
@@ -154,6 +161,9 @@ void Error_Handler(void);
 #define MIC_DIG_Pin GPIO_PIN_3
 #define MIC_DIG_GPIO_Port GPIOA
 #define MIC_DIG_EXTI_IRQn EXTI3_IRQn
+#define iEXTI4_Pin GPIO_PIN_4
+#define iEXTI4_GPIO_Port GPIOA
+#define iEXTI4_EXTI_IRQn EXTI4_IRQn
 #define OLED_DC_Pin GPIO_PIN_0
 #define OLED_DC_GPIO_Port GPIOB
 #define OLED_RST_Pin GPIO_PIN_1
