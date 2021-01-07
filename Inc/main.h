@@ -74,6 +74,7 @@ typedef enum {
 	msg_iMPU,
 	msg_mpuAllRead,
 	msg_mpuAllReady,
+	msg_mpuReadInterruptsStatus,
 	msg_shiftEvent
 } evt_t;
 

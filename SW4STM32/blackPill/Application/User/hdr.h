@@ -13,5 +13,6 @@
 //#define SET_COMPAS_BLOCK
 //#define MIC_PRESENT
 #define SET_MPU
+//#define SET_MPU_INTERRUPT
 
 #endif /* APPLICATION_USER_HDR_H_ */

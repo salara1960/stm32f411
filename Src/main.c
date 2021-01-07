@@ -58,6 +58,7 @@
 #define _100ms (_1ms * 100)
 #define _110ms (_1ms * 110)
 #define _120ms (_1ms * 120)
+#define _125ms (_1ms * 125)
 #define _130ms (_1ms * 130)
 #define _140ms (_1ms * 140)
 #define _150ms (_1ms * 150)
@@ -599,10 +600,14 @@ char *printOut(char *tmp)
 	sprintf(tmp+strlen(tmp)," | QMC5883L: azimut=%.2f temp2=%.2f",
 			    			compData.angleHMC,
 							compData.tempHMC);
-	sprintf(tmp+strlen(tmp)," | MPU6050: temp3=%.2f Accel=%d,%d,%d Gyro=%d,%d,%d",
+#ifdef SET_MPU
+	sprintf(tmp+strlen(tmp)," | MPU6050: temp3=%.2f accel=%d,%d,%d gyro=%d,%d,%d",
+							//cntMPU, mpu_interrupt.Status,
 							mpu_data.TEMP,
 							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL,
 							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
+#endif
+
 	return &tmp[0];
 }
 //-------------------------------------------------------------------------------------------
@@ -705,7 +710,17 @@ int main(void)
 #ifdef SET_MPU
     portMPU = &hi2c1;
     if (mpuID() == HAL_OK) {
-    	if (mpuInit() == HAL_OK) mpuPresent = true;
+    	STROB_DOWN();
+    	if (mpuInit() == HAL_OK) {
+    		STROB_UP();
+	#ifdef SET_MPU_INTERRUPT
+    		mpuDisableInterrupts();
+    		//mpuEnableInterrupts();
+	#endif
+    		mpuPresent = true;
+    	} else {
+    		STROB_UP();
+    	}
     }
 #endif
 
@@ -729,6 +744,7 @@ int main(void)
     errStatCnt = 0;
 
     putMsg(evt);
+
 
   /* USER CODE END 2 */
 
@@ -864,7 +880,22 @@ int main(void)
 			break;
 #ifdef SET_MPU
 			case msg_iMPU:
+				//STROB_DOWN();
 				cntMPU++;
+				//
+				//if (mpuReadInterruptsStatus() == HAL_OK) {
+					//if (mpu_interrupt.Status & 1) {
+	#ifdef SET_MPU_INTERRUPT
+						STROB_DOWN();
+						mpuDisableInterrupts();
+						siCmd = msg_mpuAllRead;
+						putMsg(msg_i2c);
+						STROB_UP();
+	#endif
+					//}
+				//}
+				//
+				//STROB_UP();
 			break;
 #endif
 #ifndef SET_COMPAS_BLOCK
@@ -872,13 +903,13 @@ int main(void)
 				switch (siCmd) {
 					case msg_startCompas:
 						if (chkTimer(next)) {
-							STROB_DOWN();
+							//
+							//STROB_DOWN();
 							//
 							msBegin = HAL_GetTick();
 							next = 0;
 							procCompas();
 							//
-							//STROB_UP();
 						} else {
 							putMsg(msg_i2c);
 						}
@@ -928,8 +959,13 @@ int main(void)
 							bmx280_CalcAll(&sensors, reg_id);
 #ifdef SET_MPU
 							if (mpuPresent) {
+								//
+	#ifdef SET_MPU_INTERRUPT
+								mpuEnableInterrupts();
+	#else
 								siCmd = msg_mpuAllRead;
 								putMsg(msg_i2c);
+	#endif
 							} else putMsg(msg_endNext);
 #else
 							putMsg(msg_endNext);
@@ -962,8 +998,13 @@ int main(void)
 						bmxCalibr = true;
 #ifdef SET_MPU
 						if (mpuPresent) {
+							//
+	#ifdef SET_MPU_INTERRUPT
+							mpuEnableInterrupts();
+	#else
 							siCmd = msg_mpuAllRead;
 							putMsg(msg_i2c);
+	#endif
 						} else putMsg(msg_endNext);
 #else
 						putMsg(msg_endNext);
@@ -979,7 +1020,7 @@ int main(void)
 					case msg_mpuAllReady:
 						//
 						mpuConvData();
-						STROB_UP();
+						//STROB_UP();
 						putMsg(msg_endNext);
 						//
 					break;
@@ -1042,11 +1083,13 @@ int main(void)
 			break;
 			case msg_endNext:
 				//
+				//
+				//
 				msCnt = HAL_GetTick() - msBegin;
-				if (msCnt < _250ms) {
-					msCnt = _250ms - msCnt;
+				if (msCnt < _125ms) {
+					msCnt = _125ms - msCnt;
 				} else {
-					msCnt -= _250ms;
+					msCnt -= _125ms;
 				}
 				if (!msCnt) msCnt++;
 				next = getTimer(msCnt);

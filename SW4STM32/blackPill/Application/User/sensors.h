@@ -164,6 +164,20 @@
 		} mpu_all_data_t;
     #pragma pack(pop)
 
+	typedef union {
+		struct {
+			uint8_t DataReady:1;       // Data ready interrupt
+			uint8_t reserved2:2;       // Reserved bits
+			uint8_t Master:1;          // Master interrupt. Not enabled with library
+			uint8_t FifoOverflow:1;    // FIFO overflow interrupt. Not enabled with library
+			uint8_t reserved1:1;       // Reserved bit
+			uint8_t MotionDetection:1; // Motion detected interrupt
+			uint8_t reserved0:1;       // Reserved bit
+		} F;
+		uint8_t Status;
+	} mpu_interrupt_t;
+
+	mpu_interrupt_t mpu_interrupt;
 	mpu_all_data_t mpu_all_data;
 	mpu_data_t mpu_data;
 
@@ -171,6 +185,10 @@
 	HAL_StatusTypeDef mpuInit();
 	HAL_StatusTypeDef mpuAllRead();
 	void mpuConvData();
+	HAL_StatusTypeDef mpuEnableInterrupts();
+	HAL_StatusTypeDef mpuDisableInterrupts();
+	HAL_StatusTypeDef mpuReadInterruptsStatus();
+
 
 #endif
 	//-----------------------------------------------
