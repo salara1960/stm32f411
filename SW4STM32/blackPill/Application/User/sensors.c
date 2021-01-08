@@ -23,7 +23,6 @@ xyz_t *xyz = NULL;
 
 #ifdef SET_MPU
 
-mpu_interrupt_t mpu_interrupt;
 mpu_all_data_t mpu_all_data;
 mpu_data_t mpu_data;
 
@@ -119,8 +118,8 @@ uint8_t devAddr = mpu_data.adr;
 	if (rt != HAL_OK) goto err;
 	//
 	//
-	// Save to SD_MPU6050_DataRate_1KHz to MPU6050_SMPLRT_DIV   and 3 to MPU6050_CONFIG
-	dat[0] = SD_MPU6050_DataRate_1KHz;
+	// Save SD_MPU6050_DataRate_1KHz to MPU6050_SMPLRT_DIV   and 3 to MPU6050_CONFIG
+	dat[0] = SD_MPU6050_DataRate_8KHz;
 	dat[1] = 3;
 	rt |= HAL_I2C_Mem_Write(portMPU, devAddr, MPU6050_SMPLRT_DIV, 1, dat, 2, min_wait_ms);
 	if (rt != HAL_OK) goto err;
@@ -131,9 +130,11 @@ uint8_t devAddr = mpu_data.adr;
 	uint8_t AccelerometerSensitivity = SD_MPU6050_Accelerometer_2G;
 	uint8_t GyroscopeSensitivity = SD_MPU6050_Gyroscope_250s;
 	rt |= HAL_I2C_Mem_Read(portMPU, devAddr, MPU6050_ACCEL_CONFIG, 1, dat, 2, min_wait_ms);
-	if (rt != HAL_OK) goto err;
-	dat[0] = (dat[0] & 0xE7) | AccelerometerSensitivity << 3;
-	dat[1] = (dat[0] & 0xE7) | GyroscopeSensitivity << 3;
+	if (rt != HAL_OK) goto err;//c & ~0xE0  //c & ~0x18 //c | Gscale << 3
+	dat[0] &= 0xE0; dat[0] |= AccelerometerSensitivity << 3;
+	dat[1] &= 0xE0; dat[1] |= GyroscopeSensitivity << 3;
+	//dat[0] = (dat[0] & 0xE0) | AccelerometerSensitivity << 3;
+	//dat[1] = (dat[1] & 0xE0) | GyroscopeSensitivity << 3;
 	rt |= HAL_I2C_Mem_Write(portMPU, devAddr, MPU6050_ACCEL_CONFIG, 1, dat, 2, min_wait_ms);
 	if (rt != HAL_OK) goto err;
 	// Set sensitivities for multiplying gyro and accelerometer data
@@ -151,6 +152,7 @@ uint8_t devAddr = mpu_data.adr;
 			mpu_data.Acce_Mult = 1.0 / MPU6050_ACCE_SENS_16;
 		break;
 	}
+
 	//
 	switch (GyroscopeSensitivity) {
 		case SD_MPU6050_Gyroscope_250s:
@@ -207,58 +209,38 @@ uint8_t adr = MPU6050_ACCEL_XOUT_H;
 //-----------------------------------------------------------------------------
 void mpuConvData()
 {
-	mpu_data.xACCEL = htons(mpu_all_data.ACCEL_XOUT);
-	mpu_data.yACCEL = htons(mpu_all_data.ACCEL_YOUT);
-	mpu_data.zACCEL = htons(mpu_all_data.ACCEL_ZOUT);
+	mpu_data.xACCEL = (float)((int16_t)(htons(mpu_all_data.ACCEL_XOUT))) * mpu_data.Acce_Mult;
+	mpu_data.yACCEL = (float)((int16_t)(htons(mpu_all_data.ACCEL_YOUT))) * mpu_data.Acce_Mult;
+	mpu_data.zACCEL = (float)((int16_t)(htons(mpu_all_data.ACCEL_ZOUT))) * mpu_data.Acce_Mult;
 	mpu_data.TEMP   = (float)((int16_t)(htons(mpu_all_data.TEMP_OUT)) / 340.0 + 36.53);
-	mpu_data.xGYRO  = htons(mpu_all_data.GYRO_XOUT);
-	mpu_data.yGYRO  = htons(mpu_all_data.GYRO_YOUT);
-	mpu_data.zGYRO  = htons(mpu_all_data.GYRO_ZOUT);
+	mpu_data.xGYRO  = (float)((int16_t)(htons(mpu_all_data.GYRO_XOUT))) * mpu_data.Gyro_Mult;
+	mpu_data.yGYRO  = (float)((int16_t)(htons(mpu_all_data.GYRO_YOUT))) * mpu_data.Gyro_Mult;
+	mpu_data.zGYRO  = (float)((int16_t)(htons(mpu_all_data.GYRO_ZOUT))) * mpu_data.Gyro_Mult;
+}
+//-----------------------------------------------------------------------------
+void mpuEnableInterrupts()
+{
+uint8_t reg[] = {0x8c, 1};
 
+	//set 0x9c to MPU6050_INT_PIN_CFG and 1 to MPU6050_INT_ENABLE
+	if (HAL_I2C_Mem_Write(portMPU, mpu_data.adr << 1, MPU6050_INT_PIN_CFG, 1, reg, 2, min_wait_ms) != HAL_OK) devError |= devI2C1;
+}
+//-----------------------------------------------------------------------------
+void mpuDisableInterrupts()
+{
+uint8_t reg[] = {MPU6050_INT_ENABLE, 0};
+
+	if (HAL_I2C_Master_Transmit(portMPU, mpu_data.adr << 1, reg, 2, min_wait_ms) != HAL_OK) devError |= devI2C1;
 
 }
 //-----------------------------------------------------------------------------
-HAL_StatusTypeDef mpuEnableInterrupts()
+uint8_t mpuReadStatus()
 {
-HAL_StatusTypeDef rt = HAL_OK;
-/*
-uint8_t reg[] = {MPU6050_INT_ENABLE, 1};
+uint8_t stat = 0;
 
+	if (HAL_I2C_Mem_Read(portMPU, mpu_data.adr << 1, MPU6050_INT_STATUS, 1, &stat, 1, min_wait_ms) != HAL_OK) devError |= devI2C1;
 
-	// Enable interrupts for data ready and motion detect
-	rt = HAL_I2C_Master_Transmit(portMPU, mpu_data.adr << 1, reg, 2, min_wait_ms);
-	if (rt == HAL_OK) {
-		uint8_t mpu_reg= MPU6050_INT_PIN_CFG;
-		// Clear IRQ flag on any read operation
-		rt |= HAL_I2C_Master_Transmit(portMPU, mpu_data.adr << 1, &mpu_reg, 1, min_wait_ms);
-		if (rt == HAL_OK) {
-			rt |= HAL_I2C_Master_Receive(portMPU, mpu_data.adr << 1, &reg[1], 1, min_wait_ms);//14, 1000);
-			if (rt == HAL_OK) {
-				reg[1] |= 0x10;
-				reg[0] = MPU6050_INT_PIN_CFG;
-				rt |= HAL_I2C_Master_Transmit(portMPU, mpu_data.adr << 1, reg, 2, min_wait_ms);
-			}
-		}
-	}
-*/
-	//set 9c to MPU6050_INT_PIN_CFG and 1 to MPU6050_INT_ENABLE
-	uint8_t reg[] = {0x8c, 1};
-	rt = HAL_I2C_Mem_Write(portMPU, mpu_data.adr << 1, MPU6050_INT_PIN_CFG, 1, reg, 2, min_wait_ms);
-	if (rt) devError |= devI2C1;
-
-	return rt;
-}
-//-----------------------------------------------------------------------------
-HAL_StatusTypeDef mpuDisableInterrupts()
-{
-uint8_t reg[2] = {MPU6050_INT_ENABLE, 0x00};
-
-	return HAL_I2C_Master_Transmit(portMPU, mpu_data.adr << 1, reg, 2, min_wait_ms);
-}
-//-----------------------------------------------------------------------------
-HAL_StatusTypeDef mpuReadInterruptsStatus()
-{
-	return HAL_I2C_Mem_Read(portMPU, mpu_data.adr << 1, MPU6050_INT_STATUS, 1, &mpu_interrupt.Status, 1, min_wait_ms);
+	return stat;
 }
 //-----------------------------------------------------------------------------
 

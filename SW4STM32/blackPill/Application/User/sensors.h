@@ -136,12 +136,12 @@
 			float Acce_Mult; // Accelerometer corrector from raw data to "g". Only for private use
 			float Gyro_Mult; // Gyroscope corrector from raw data to "degrees/s". Only for private use
 			float TEMP;
-			int16_t xACCEL;
-			int16_t yACCEL;
-			int16_t zACCEL;
-			int16_t xGYRO;
-			int16_t yGYRO;
-			int16_t zGYRO;
+			float xACCEL;
+			float yACCEL;
+			float zACCEL;
+			float xGYRO;
+			float yGYRO;
+			float zGYRO;
 		} mpu_data_t;
 	#pragma pack(pop)
 
@@ -177,7 +177,7 @@
 		uint8_t Status;
 	} mpu_interrupt_t;
 
-	mpu_interrupt_t mpu_interrupt;
+	//mpu_interrupt_t mpu_interrupt;
 	mpu_all_data_t mpu_all_data;
 	mpu_data_t mpu_data;
 
@@ -185,9 +185,9 @@
 	HAL_StatusTypeDef mpuInit();
 	HAL_StatusTypeDef mpuAllRead();
 	void mpuConvData();
-	HAL_StatusTypeDef mpuEnableInterrupts();
-	HAL_StatusTypeDef mpuDisableInterrupts();
-	HAL_StatusTypeDef mpuReadInterruptsStatus();
+	void mpuEnableInterrupts();
+	void mpuDisableInterrupts();
+	uint8_t mpuReadStatus();
 
 
 #endif

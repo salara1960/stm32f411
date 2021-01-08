@@ -133,6 +133,7 @@ volatile uint8_t txDoneFlag = 1;
 volatile uint8_t ledValue = 0;
 uint32_t next = 0;
 uint32_t msBegin = 0, msCnt = 0;
+const uint32_t msPeriod = _100ms;
 //
 int siCmd = 0;
 uint32_t tx_icnt = 0, rx_icnt = 0;
@@ -157,7 +158,7 @@ uint32_t tx_icnt = 0, rx_icnt = 0;
 	char bmxName[16] = {0};
 #endif
 
-compas_data_t compData = {0, 0, 0, 0, 0};
+compas_data_t compData = {0.0, 0.0};
 I2C_HandleTypeDef *portHMC = NULL;
 
 
@@ -189,6 +190,7 @@ uint32_t cikl_out = _5s;
 	I2C_HandleTypeDef *portMPU = NULL;
 	uint32_t cntMPU = 0;
 	bool mpuPresent = false;
+	uint8_t mpuStatus;
 #endif
 
 
@@ -601,8 +603,8 @@ char *printOut(char *tmp)
 			    			compData.angleHMC,
 							compData.tempHMC);
 #ifdef SET_MPU
-	sprintf(tmp+strlen(tmp)," | MPU6050: temp3=%.2f accel=%d,%d,%d gyro=%d,%d,%d",
-							//cntMPU, mpu_interrupt.Status,
+	sprintf(tmp+strlen(tmp)," | MPU6050: stat=%X temp3=%.2f accel=%.2f,%.2f,%.2f gyro=%.2f,%.2f,%.2f",
+							mpuStatus,
 							mpu_data.TEMP,
 							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL,
 							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
@@ -652,7 +654,7 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
-    sprintf(devName, "- Speed:%u -", huart1.Init.BaudRate);
+    sprintf(devName, "- Speed:%lu -", huart1.Init.BaudRate);
 
   	// start timer1 + interrupt
 	HAL_TIM_Base_Start(&htim2);
@@ -710,17 +712,16 @@ int main(void)
 #ifdef SET_MPU
     portMPU = &hi2c1;
     if (mpuID() == HAL_OK) {
-    	STROB_DOWN();
+    	//STROB_DOWN();
     	if (mpuInit() == HAL_OK) {
-    		STROB_UP();
-	#ifdef SET_MPU_INTERRUPT
+    		//STROB_UP();
+	//#ifdef SET_MPU_INTERRUPT
     		mpuDisableInterrupts();
-    		//mpuEnableInterrupts();
-	#endif
+	//#endif
     		mpuPresent = true;
-    	} else {
-    		STROB_UP();
-    	}
+    	}// else {
+    		//STROB_UP();
+    	//}
     }
 #endif
 
@@ -860,7 +861,7 @@ int main(void)
 				}
 			break;
 			case msg_rst:
-				HAL_Delay(1000);
+				HAL_Delay(500);
 				NVIC_SystemReset();
 			break;
 			case msg_shiftEvent:
@@ -880,22 +881,19 @@ int main(void)
 			break;
 #ifdef SET_MPU
 			case msg_iMPU:
-				//STROB_DOWN();
 				cntMPU++;
 				//
-				//if (mpuReadInterruptsStatus() == HAL_OK) {
-					//if (mpu_interrupt.Status & 1) {
+				//if (mpuReadStatus() & 1) {
 	#ifdef SET_MPU_INTERRUPT
-						STROB_DOWN();
-						mpuDisableInterrupts();
-						siCmd = msg_mpuAllRead;
-						putMsg(msg_i2c);
-						STROB_UP();
+					STROB_DOWN();
+					mpuStatus = mpuReadStatus();//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+					mpuDisableInterrupts();
+					siCmd = msg_mpuAllRead;
+					putMsg(msg_i2c);
+					STROB_UP();
 	#endif
-					//}
 				//}
 				//
-				//STROB_UP();
 			break;
 #endif
 #ifndef SET_COMPAS_BLOCK
@@ -1014,6 +1012,10 @@ int main(void)
 #ifdef SET_MPU
 					case msg_mpuAllRead:
 						//
+	#ifndef SET_MPU_INTERRUPT
+						mpuStatus = mpuReadStatus();//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	#endif
+						//
 						mpuAllRead();//start read all data from adr 0x3b....(14 bytes)
 						//
 					break;
@@ -1086,10 +1088,10 @@ int main(void)
 				//
 				//
 				msCnt = HAL_GetTick() - msBegin;
-				if (msCnt < _125ms) {
-					msCnt = _125ms - msCnt;
+				if (msCnt < msPeriod) {
+					msCnt = msPeriod - msCnt;
 				} else {
-					msCnt -= _125ms;
+					msCnt -= msPeriod;
 				}
 				if (!msCnt) msCnt++;
 				next = getTimer(msCnt);

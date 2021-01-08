@@ -97,9 +97,6 @@ enum {
 typedef struct {
 	float angleHMC;
 	float tempHMC;
-	//int x;
-	//int y;
-	//int z;
 } compas_data_t;
 #pragma pack(pop)
 
