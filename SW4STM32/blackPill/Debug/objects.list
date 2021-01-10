@@ -1,6 +1,7 @@
 "Application/SW4STM32/startup_stm32f411xe.o"
 "Application/SW4STM32/syscalls.o"
 "Application/User/font.o"
+"Application/User/jfes.o"
 "Application/User/main.o"
 "Application/User/sensors.o"
 "Application/User/ssd1306_spi.o"

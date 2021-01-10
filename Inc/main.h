@@ -45,6 +45,7 @@ extern "C" {
 #include "hdr.h"
 #include "sensors.h"
 #include "ssd1306.h"
+#include "jfes.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -75,7 +76,8 @@ typedef enum {
 	msg_mpuAllRead,
 	msg_mpuAllReady,
 	msg_mpuReadInterruptsStatus,
-	msg_shiftEvent
+	msg_shiftEvent,
+	msg_none
 } evt_t;
 
 enum {
@@ -85,7 +87,8 @@ enum {
 	devUART = 8,
 	devADC = 0x10,
 	devTmr2 = 0x20,
-	devFifo = 0x40
+	devFifo = 0x40,
+	devMem = 0x80
 };
 
 #ifndef bool

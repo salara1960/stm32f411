@@ -12,7 +12,8 @@
 result_t sensors = {0.0, 0.0, 0.0};
 const uint32_t min_wait_ms = 150;
 const uint32_t max_wait_ms = 500;
-uint8_t hmc_ini[] = {Mode_Continuous | ODR_100Hz | RNG_8G | OSR_512, 0, 1};
+uint8_t hmc_ini[] = {Mode_Continuous | ODR_200Hz | RNG_2G | OSR_512, 0, 1};
+float qmc_temp_zero = -2.0;//  # Just a first value
 
 uint8_t	magBuf[MAG_BUF_SIZE] = {0};
 uint8_t cStat = 0;
@@ -297,8 +298,7 @@ double azimut, x, y, con = 2 * M_PI;
 
 	xyz = (xyz_t *)&magBuf[0];
 
-	uint16_t tempHMCraw = xyz->temp & 0x3fff;
-	compData.tempHMC = (float)(tempHMCraw) / 520.0;
+	compData.tempHMC = ((float)(xyz->temp & 0x3fff) / 520.0) + qmc_temp_zero;
 
 	x = xyz->x;// * 0.92;
 	y = xyz->y;// * 0.92;

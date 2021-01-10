@@ -127,7 +127,8 @@ char rxByte = '\0';
 uint8_t rx_uk = 0;
 uint16_t rxBytes = 0;
 char stx[MAX_TMP_SIZE] = {0};
-char tmp[MAX_TMP_SIZE] = {0};
+char tmp[MAX_TMP_SIZE << 1] = {0};
+//char txData[MAX_TMP_SIZE << 1] = {0};
 volatile uint32_t txDoneCnt = 0;
 volatile uint8_t txDoneFlag = 1;
 volatile uint8_t ledValue = 0;
@@ -191,6 +192,12 @@ uint32_t cikl_out = _5s;
 	uint32_t cntMPU = 0;
 	bool mpuPresent = false;
 	uint8_t mpuStatus;
+#endif
+
+#ifdef SET_JFES
+	jfes_config_t conf;
+	jfes_config_t *jconf = NULL;
+	int jtune = 0;
 #endif
 
 
@@ -466,6 +473,7 @@ void Report(const char *tag, unsigned char addTime, const char *fmt, ...)
 va_list args;
 size_t len = MAX_UART_BUF;
 int dl = 0;
+//char *buff = &txData[0];
 
 	if (!txDoneFlag) return;
 
@@ -587,9 +595,120 @@ void procCompas()
 		if (COPMAS_GetAngle() != HAL_OK) devError |= devI2C1;
 	}
 }
+//------------------------------------------------------------------------------------------
+#ifdef SET_JFES
+
+void *getMem(size_t len)
+{
+#ifdef SET_CALLOC_MEM
+		return (calloc(1, len));
+#else
+	#ifdef SET_MALLOC_MEM
+		return (malloc(len));
+	#else
+		return (pvPortMalloc(len));
+	#endif
+#endif
+}
+//------------------------------------------------------------------------------------
+void freeMem(void *mem)
+{
+#if defined(SET_CALLOC_MEM) || defined(SET_MALLOC_MEM)
+		free(mem);
+#else
+		vPortFree(mem);
+#endif
+}
+
+#endif
+//------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------
 char *printOut(char *tmp)
 {
+#if defined(SET_JFES)
+    jfes_value_t *obj = jfes_create_object_value(jconf);
+    if (obj) {
+    	char dt[32] = {0};
+    	sec_to_str_time(dt);
+    	jfes_set_object_property(jconf, obj, jfes_create_string_value(jconf, dt, 0), "time", 0);
+    	jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, tik), "ms", 0);
+    	jfes_value_t *arr1 = jfes_create_array_value(jconf);
+    	if (arr1) {
+    		jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, cnt_evt));
+    		jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, max_evt));
+    		jfes_set_object_property(jconf, obj, arr1, "fifo", 0);
+    	}
+    	//jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, max_evt), "fifo", 0);
+    	if (devError) jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, devError), "devError", 0);
+    	//
+#ifdef SET_BMx280
+    	jfes_value_t *sens1 = jfes_create_object_value(jconf);
+    	if (sens1) {
+    		jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_pres), "press", 0);
+    		jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_temp), "temp", 0);
+    		if (reg_id == BME280_SENSOR) jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_humi), "humi", 0);
+    		jfes_set_object_property(jconf, obj, sens1, bmxName, 0);//"sensName"
+    	} else devError |= devMem;
+#endif
+    	//
+    	jfes_value_t *sens2 = jfes_create_object_value(jconf);
+    	if (sens2) {
+    		jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.angleHMC), "azimut", 0);
+    		jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.tempHMC), "temp2", 0);
+    		jfes_set_object_property(jconf, obj, sens2, "QMC5883L", 0);//"sensName"
+    	} else devError |= devMem;
+    	//
+    	jfes_value_t *sens3 = jfes_create_object_value(jconf);
+    	if (sens3) {
+    		jfes_set_object_property(jconf, sens3, jfes_create_integer_value(jconf, mpuStatus), "stat", 0);
+    		jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.TEMP), "temp3", 0);
+    		jfes_value_t *arr2 = jfes_create_array_value(jconf);
+    		if (arr2) {
+    			jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.xACCEL));
+    			jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.yACCEL));
+    			jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.zACCEL));
+    			jfes_set_object_property(jconf, sens3, arr2, "accel", 0);
+    		}
+    		jfes_value_t *arr3 = jfes_create_array_value(jconf);
+    		if (arr3) {
+    			jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.xGYRO));
+    			jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.yGYRO));
+    			jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.zGYRO));
+    			jfes_set_object_property(jconf, sens3, arr3, "gyro", 0);
+    		}
+    		//jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.xACCEL), "accel", 0);
+    		//jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.xGYRO), "gyro", 0);
+    		jfes_set_object_property(jconf, obj, sens3, "MPU6050", 0);//"sensName"
+    	} else devError |= devMem;
+    	//
+        jfes_size_t ssize  = (jfes_size_t)((MAX_TMP_SIZE << 1) - 1);
+        jfes_value_to_string(obj, tmp, &ssize, jtune);
+        *(tmp + ssize) = '\0';
+        strcat(tmp, ">");
+
+
+        jfes_free_value(jconf, obj);
+    } else devError |= devMem;
+#elif defined(SET_JSON)
+    char dt[32] = {0};
+    sec_to_str_time(dt);
+    sprintf(tmp, "\n{\n\"time\":%s,\n\"ms\":%lu,\n\"fifo\":[%u,%u]", dt, tik, cnt_evt, max_evt);
+    if (devError) sprintf(tmp+strlen(tmp), ",\n\"devError\":0x%02X", devError);
+	#ifdef SET_BMx280
+		sprintf(tmp+strlen(tmp), ",\n%s:\n\t{\n\t\"pres\":%.2f,\n\t\"temp\":%.2f", bmxName, sensors.bmx_pres, sensors.bmx_temp);
+		if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), ",\n\t\"humi\":%.2f", sensors.bmx_humi);
+		strcat(tmp, "\n\t}");
+	#endif
+	sprintf(tmp+strlen(tmp), ",\nQMC5883L:\n\t{\n\t\"azimut\":%.2f,\n\t\"temp2\":%.2f\n\t}" , compData.angleHMC, compData.tempHMC);
+	#ifdef SET_MPU
+		sprintf(tmp+strlen(tmp), ",\nMPU6050:\n\t{\n\t\"stat\":%X,\n\t\"temp3\":%.2f,\n\t\"accel\":[%.2f,%.2f,%.2f],\n\t\"gyro\":[%.2f,%.2f,%.2f]\n\t}",
+							mpuStatus,
+							mpu_data.TEMP,
+							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL,
+							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
+	#endif
+		strcat(tmp, "\n}");
+#else
 	sprintf(tmp, " | ms=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
 	if (devError) sprintf(tmp+strlen(tmp), " devError:0x%02X", devError);
 	sprintf(tmp+strlen(tmp), " | Vcc=%.3f", VccF);
@@ -608,6 +727,8 @@ char *printOut(char *tmp)
 							mpu_data.TEMP,
 							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL,
 							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
+#endif
+
 #endif
 
 	return &tmp[0];
@@ -674,6 +795,12 @@ int main(void)
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
 
+#ifdef SET_JFES
+    conf.jfes_malloc = (jfes_malloc_t)getMem;
+    conf.jfes_free = freeMem;
+    jconf = &conf;
+#endif
+
 
 #ifdef SET_OLED_SPI
     portOLED = &hspi4;
@@ -712,16 +839,10 @@ int main(void)
 #ifdef SET_MPU
     portMPU = &hi2c1;
     if (mpuID() == HAL_OK) {
-    	//STROB_DOWN();
     	if (mpuInit() == HAL_OK) {
-    		//STROB_UP();
-	//#ifdef SET_MPU_INTERRUPT
-    		mpuDisableInterrupts();
-	//#endif
     		mpuPresent = true;
-    	}// else {
-    		//STROB_UP();
-    	//}
+    		mpuDisableInterrupts();
+    	}
     }
 #endif
 
@@ -795,9 +916,7 @@ int main(void)
 		    	if (tmr_out) {
 		    		if (chkTimer(tmr_out)) {
 		    			tmr_out = 0;
-		    			//
 		    			putMsg(msg_out);
-		    			//
 		    		}
 		    	}
 		    	//
@@ -846,7 +965,15 @@ int main(void)
 							set_Date((time_t)cep);
 						}
 					}
-				} else if ((uk = strstr(stx, "get")) != NULL) {
+				}
+#ifdef SET_JFES
+				else if ((uk = strstr(stx, "jtune_on")) != NULL) {
+					jtune = 1;
+				} else if ((uk = strstr(stx, "jtune_off")) != NULL) {
+					jtune = 0;
+				}
+#endif
+				else if ((uk = strstr(stx, "get")) != NULL) {
 					//putMsg(msg_out);
 					tmr_out = getTimer(_1ms);
 				} else if ((uk = strstr(stx, "rst")) != NULL) {
@@ -866,9 +993,7 @@ int main(void)
 			break;
 			case msg_shiftEvent:
 #ifdef SET_OLED_SPI
-				//STROB_DOWN();
-					spi_ssd1306_shift(shiftLine, shiftStart);
-				//STROB_UP();
+				spi_ssd1306_shift(shiftLine, shiftStart);
 				if (shiftStart == OLED_CMD_SHIFT_STOP) {
 					spi_ssd1306_clear_line(shiftLine);
 					spi_ssd1306_text_xy(devName, 1, shiftLine);
@@ -877,25 +1002,28 @@ int main(void)
 			break;
 			case msg_out:
 				tmr_out = getTimer(cikl_out);
-				Report(NULL, 1, "%s\r\n", printOut(tmp));
+				uint8_t with_dt = 1;
+	#if defined(SET_JSON) || defined(SET_JFES)
+				with_dt = 0;
+	#endif
+				Report(NULL, with_dt, "%s\r\n", printOut(tmp));
 			break;
-#ifdef SET_MPU
 			case msg_iMPU:
+#ifdef SET_MPU
 				cntMPU++;
 				//
-				//if (mpuReadStatus() & 1) {
 	#ifdef SET_MPU_INTERRUPT
-					STROB_DOWN();
-					mpuStatus = mpuReadStatus();//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+					//STROB_DOWN();
 					mpuDisableInterrupts();
+					mpuStatus = mpuReadStatus();//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+					//
 					siCmd = msg_mpuAllRead;
 					putMsg(msg_i2c);
-					STROB_UP();
+					//STROB_UP();
 	#endif
-				//}
 				//
-			break;
 #endif
+			break;
 #ifndef SET_COMPAS_BLOCK
 			case msg_i2c:
 				switch (siCmd) {
@@ -913,7 +1041,6 @@ int main(void)
 						}
 					break;
 					case msg_getCompas:
-					{
 						//
 						if (CompAddVal(COPMAS_CalcAngle()) == MAX_COMP_BUF) {//в окне накоплено MAX_VCC_BUF выборок -> фильтрация !
 							float sum = 0;
@@ -926,7 +1053,6 @@ int main(void)
 						next = 0;
 						putMsg(msg_nextSens);
 						//
-					}
 					break;
 					case msg_rdyTest:
 						//

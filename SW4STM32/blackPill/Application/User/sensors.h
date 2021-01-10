@@ -40,7 +40,7 @@
 		int16_t y;
 		int16_t z;
 		uint8_t stat;
-		uint16_t temp;
+		int16_t temp;
 	} xyz_t;
 #pragma pack(pop)
 
@@ -204,20 +204,20 @@
 	#define COPMAS_STAT_REG 6
 	#define COPMAS_CTRL_REG 9 //9<-0x1D, 0x0a<-0, 0x0b<-1
 
-	#define Mode_Standby    0b00000000
-	#define Mode_Continuous 0b00000001
+	#define Mode_Standby    0
+	#define Mode_Continuous 1
 
-	#define ODR_10Hz        0b00000000
-	#define ODR_50Hz        0b00000100
-	#define ODR_100Hz       0b00001000
-	#define ODR_200Hz       0b00001100
+	#define ODR_10Hz        0
+	#define ODR_50Hz        4//0b00000100
+	#define ODR_100Hz       8//0b00001000
+	#define ODR_200Hz       0x0C//0b00001100
 
-	#define RNG_2G          0b00000000
-	#define RNG_8G          0b00010000
+	#define RNG_2G          0
+	#define RNG_8G          16//0b00010000
 
-	#define OSR_512         0b00000000
-	#define OSR_256         0b01000000
-	#define OSR_128         0b10000000
+	#define OSR_512         0
+	#define OSR_256         0x40//0b01000000
+	#define OSR_128         0x80//0b10000000
 	#define OSR_64          0b11000000
 
 
@@ -225,6 +225,7 @@
 	uint8_t	magBuf[MAG_BUF_SIZE];
 	xyz_t *xyz;
 	uint8_t cStat;
+	float qmc_temp_zero;
 
 
 	HAL_StatusTypeDef COPMAS_Init();
