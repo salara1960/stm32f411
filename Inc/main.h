@@ -91,6 +91,12 @@ enum {
 	devMem = 0x80
 };
 
+enum {
+	textMode = 0,
+	jfesMode,
+	jsonMode
+};
+
 #ifndef bool
 	#define true 1
 	#define false 0

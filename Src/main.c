@@ -110,6 +110,7 @@ DMA_HandleTypeDef hdma_usart1_tx;
 /* USER CODE BEGIN PV */
 
 const char gradus = 0x1f;
+const char *cr_lf = "\r\n";
 
 static evt_t evt_fifo[MAX_FIFO_SIZE] = {msg_empty};
 uint8_t rd_evt_adr = 0;
@@ -138,7 +139,11 @@ const uint32_t msPeriod = _100ms;
 //
 int siCmd = 0;
 uint32_t tx_icnt = 0, rx_icnt = 0;
+//
 
+uint8_t outMode = textMode;
+
+//
 #ifdef SET_OLED_SPI
 	SPI_HandleTypeDef *portOLED = NULL;
 	char line[MAX_TMP_SIZE] = {0};
@@ -625,111 +630,125 @@ void freeMem(void *mem)
 //-------------------------------------------------------------------------------------------
 char *printOut(char *tmp)
 {
-#if defined(SET_JFES)
-    jfes_value_t *obj = jfes_create_object_value(jconf);
-    if (obj) {
-    	char dt[32] = {0};
-    	sec_to_str_time(dt);
-    	jfes_set_object_property(jconf, obj, jfes_create_string_value(jconf, dt, 0), "time", 0);
-    	jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, tik), "ms", 0);
-    	jfes_value_t *arr1 = jfes_create_array_value(jconf);
-    	if (arr1) {
-    		jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, cnt_evt));
-    		jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, max_evt));
-    		jfes_set_object_property(jconf, obj, arr1, "fifo", 0);
-    	}
-    	//jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, max_evt), "fifo", 0);
-    	if (devError) jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, devError), "devError", 0);
-    	//
-#ifdef SET_BMx280
-    	jfes_value_t *sens1 = jfes_create_object_value(jconf);
-    	if (sens1) {
-    		jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_pres), "press", 0);
-    		jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_temp), "temp", 0);
-    		if (reg_id == BME280_SENSOR) jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_humi), "humi", 0);
-    		jfes_set_object_property(jconf, obj, sens1, bmxName, 0);//"sensName"
-    	} else devError |= devMem;
-#endif
-    	//
-    	jfes_value_t *sens2 = jfes_create_object_value(jconf);
-    	if (sens2) {
-    		jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.angleHMC), "azimut", 0);
-    		jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.tempHMC), "temp2", 0);
-    		jfes_set_object_property(jconf, obj, sens2, "QMC5883L", 0);//"sensName"
-    	} else devError |= devMem;
-    	//
-    	jfes_value_t *sens3 = jfes_create_object_value(jconf);
-    	if (sens3) {
-    		jfes_set_object_property(jconf, sens3, jfes_create_integer_value(jconf, mpuStatus), "stat", 0);
-    		jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.TEMP), "temp3", 0);
-    		jfes_value_t *arr2 = jfes_create_array_value(jconf);
-    		if (arr2) {
-    			jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.xACCEL));
-    			jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.yACCEL));
-    			jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.zACCEL));
-    			jfes_set_object_property(jconf, sens3, arr2, "accel", 0);
-    		}
-    		jfes_value_t *arr3 = jfes_create_array_value(jconf);
-    		if (arr3) {
-    			jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.xGYRO));
-    			jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.yGYRO));
-    			jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.zGYRO));
-    			jfes_set_object_property(jconf, sens3, arr3, "gyro", 0);
-    		}
-    		//jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.xACCEL), "accel", 0);
-    		//jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.xGYRO), "gyro", 0);
-    		jfes_set_object_property(jconf, obj, sens3, "MPU6050", 0);//"sensName"
-    	} else devError |= devMem;
-    	//
-        jfes_size_t ssize  = (jfes_size_t)((MAX_TMP_SIZE << 1) - 1);
-        jfes_value_to_string(obj, tmp, &ssize, jtune);
-        *(tmp + ssize) = '\0';
-        strcat(tmp, ">");
 
-
-        jfes_free_value(jconf, obj);
-    } else devError |= devMem;
-#elif defined(SET_JSON)
-    char dt[32] = {0};
-    sec_to_str_time(dt);
-    sprintf(tmp, "\n{\n\"time\":%s,\n\"ms\":%lu,\n\"fifo\":[%u,%u]", dt, tik, cnt_evt, max_evt);
-    if (devError) sprintf(tmp+strlen(tmp), ",\n\"devError\":0x%02X", devError);
-	#ifdef SET_BMx280
-		sprintf(tmp+strlen(tmp), ",\n%s:\n\t{\n\t\"pres\":%.2f,\n\t\"temp\":%.2f", bmxName, sensors.bmx_pres, sensors.bmx_temp);
-		if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), ",\n\t\"humi\":%.2f", sensors.bmx_humi);
-		strcat(tmp, "\n\t}");
-	#endif
-	sprintf(tmp+strlen(tmp), ",\nQMC5883L:\n\t{\n\t\"azimut\":%.2f,\n\t\"temp2\":%.2f\n\t}" , compData.angleHMC, compData.tempHMC);
-	#ifdef SET_MPU
-		sprintf(tmp+strlen(tmp), ",\nMPU6050:\n\t{\n\t\"stat\":%X,\n\t\"temp3\":%.2f,\n\t\"accel\":[%.2f,%.2f,%.2f],\n\t\"gyro\":[%.2f,%.2f,%.2f]\n\t}",
-							mpuStatus,
-							mpu_data.TEMP,
-							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL,
-							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
-	#endif
-		strcat(tmp, "\n}");
-#else
-	sprintf(tmp, " | ms=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
-	if (devError) sprintf(tmp+strlen(tmp), " devError:0x%02X", devError);
-	sprintf(tmp+strlen(tmp), " | Vcc=%.3f", VccF);
+switch (outMode) {
+	case jfesMode:
+	{
+		jfes_value_t *obj = jfes_create_object_value(jconf);
+		if (obj) {
+			char dt[32] = {0};
+			sec_to_str_time(dt);
+			jfes_set_object_property(jconf, obj, jfes_create_string_value(jconf, dt, 0), "time", 0);
+			jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, tik), "ms", 0);
+			jfes_value_t *arr1 = jfes_create_array_value(jconf);
+			if (arr1) {
+				jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, cnt_evt));
+				jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, max_evt));
+				jfes_set_object_property(jconf, obj, arr1, "fifo", 0);
+			}
+			if (devError) jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, devError), "devError", 0);
+			jfes_set_object_property(jconf, obj, jfes_create_double_value(jconf, VccF), "volt", 0);
+			//
 #ifdef SET_BMx280
-	sprintf(tmp+strlen(tmp)," | %s: pres=%.2f temp=%.2f",
-							bmxName, sensors.bmx_pres, sensors.bmx_temp);
-	if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f", sensors.bmx_humi);
+			jfes_value_t *sens1 = jfes_create_object_value(jconf);
+			if (sens1) {
+				jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_pres), "press", 0);
+				jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_temp), "temp", 0);
+				if (reg_id == BME280_SENSOR)
+					jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_humi), "humi", 0);
+				jfes_set_object_property(jconf, obj, sens1, bmxName, 0);//"sensName"
+			} else devError |= devMem;
 #endif
-	//compas_stat_t *cStat = (compas_stat_t *)confRegHmc;
-	sprintf(tmp+strlen(tmp)," | QMC5883L: azimut=%.2f temp2=%.2f",
+			//
+			jfes_value_t *sens2 = jfes_create_object_value(jconf);
+			if (sens2) {
+				jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.angleHMC), "azimut", 0);
+				jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.tempHMC), "temp2", 0);
+				jfes_set_object_property(jconf, obj, sens2, "QMC5883L", 0);//"sensName"
+			} else devError |= devMem;
+			//
+			jfes_value_t *sens3 = jfes_create_object_value(jconf);
+			if (sens3) {
+				jfes_set_object_property(jconf, sens3, jfes_create_integer_value(jconf, mpuStatus), "stat", 0);
+				jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.TEMP), "temp3", 0);
+				jfes_value_t *arr2 = jfes_create_array_value(jconf);
+				if (arr2) {
+					jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.xACCEL));
+					jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.yACCEL));
+					jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.zACCEL));
+					jfes_set_object_property(jconf, sens3, arr2, "accel", 0);
+				}
+				jfes_value_t *arr3 = jfes_create_array_value(jconf);
+				if (arr3) {
+					jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.xGYRO));
+					jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.yGYRO));
+					jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.zGYRO));
+					jfes_set_object_property(jconf, sens3, arr3, "gyro", 0);
+				}
+				jfes_set_object_property(jconf, obj, sens3, "MPU6050", 0);//"sensName"
+			} else devError |= devMem;
+			//
+			jfes_size_t ssize  = (jfes_size_t)((MAX_TMP_SIZE << 1) - 1);
+			jfes_value_to_string(obj, tmp, &ssize, jtune);
+			*(tmp + ssize) = '\0';
+			strcat(tmp, ">");
+
+			jfes_free_value(jconf, obj);
+		} else devError |= devMem;
+	}
+	break;
+	case jsonMode:
+	{
+		char dt[32] = {0};
+		sec_to_str_time(dt);
+		sprintf(tmp, "%s{%s  \"time\": \"%s\",%s  \"ms\": %lu,%s  \"fifo\": [%u,%u]",
+					cr_lf, cr_lf, dt, cr_lf, tik, cr_lf, cnt_evt, max_evt);
+		if (devError) sprintf(tmp+strlen(tmp), ",%s  \"devError\": 0x%02X", cr_lf, devError);
+		sprintf(tmp+strlen(tmp), ",%s  \"volt\": %.3f", cr_lf, VccF);
+#ifdef SET_BMx280
+		sprintf(tmp+strlen(tmp), ",%s  \"%s\": {%s    \"press\": %.2f,%s    \"temp\": %.2f",
+					cr_lf, bmxName, cr_lf, sensors.bmx_pres, cr_lf, sensors.bmx_temp);
+		if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), ",%s    \"humi\": %.2f", cr_lf, sensors.bmx_humi);
+		sprintf(tmp+strlen(tmp), "%s  }", cr_lf);
+#endif
+		sprintf(tmp+strlen(tmp), ",%s  \"QMC5883L\": {%s    \"azimut\": %.2f,%s    \"temp2\": %.2f%s  }" ,
+					cr_lf, cr_lf, compData.angleHMC, cr_lf, compData.tempHMC, cr_lf);
+#ifdef SET_MPU
+		sprintf(tmp+strlen(tmp), ",%s  \"MPU6050\": {%s    \"stat\": %X,%s    \"temp3\": %.2f,%s    \"accel\": [%.2f,%.2f,%.2f],%s    \"gyro\": [%.2f,%.2f,%.2f]%s  }",
+							cr_lf, cr_lf,
+							mpuStatus, cr_lf,
+							mpu_data.TEMP, cr_lf,
+							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL, cr_lf,
+							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO, cr_lf);
+#endif
+		sprintf(tmp+strlen(tmp), "%s}>", cr_lf);
+	}
+	break;
+
+	default : {// textMode
+
+		sprintf(tmp, " | ms=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
+		if (devError) sprintf(tmp+strlen(tmp), " devError:0x%02X", devError);
+		sprintf(tmp+strlen(tmp), " | Vcc=%.3f", VccF);
+#ifdef SET_BMx280
+		sprintf(tmp+strlen(tmp)," | %s: pres=%.2f temp=%.2f",
+								bmxName, sensors.bmx_pres, sensors.bmx_temp);
+		if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f", sensors.bmx_humi);
+#endif
+		//compas_stat_t *cStat = (compas_stat_t *)confRegHmc;
+		sprintf(tmp+strlen(tmp)," | QMC5883L: azimut=%.2f temp2=%.2f",
 			    			compData.angleHMC,
 							compData.tempHMC);
 #ifdef SET_MPU
-	sprintf(tmp+strlen(tmp)," | MPU6050: stat=%X temp3=%.2f accel=%.2f,%.2f,%.2f gyro=%.2f,%.2f,%.2f",
+		sprintf(tmp+strlen(tmp)," | MPU6050: stat=%X temp3=%.2f accel=%.2f,%.2f,%.2f gyro=%.2f,%.2f,%.2f",
 							mpuStatus,
 							mpu_data.TEMP,
 							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL,
 							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
 #endif
 
-#endif
+	}
+}
 
 	return &tmp[0];
 }
@@ -971,6 +990,12 @@ int main(void)
 					jtune = 1;
 				} else if ((uk = strstr(stx, "jtune_off")) != NULL) {
 					jtune = 0;
+				} else if ((uk = strstr(stx, "jfes")) != NULL) {
+					outMode = jfesMode;
+				} else if ((uk = strstr(stx, "json")) != NULL) {
+					outMode = jsonMode;
+				} else if ((uk = strstr(stx, "text")) != NULL) {
+					outMode = textMode;
 				}
 #endif
 				else if ((uk = strstr(stx, "get")) != NULL) {
@@ -1002,10 +1027,8 @@ int main(void)
 			break;
 			case msg_out:
 				tmr_out = getTimer(cikl_out);
-				uint8_t with_dt = 1;
-	#if defined(SET_JSON) || defined(SET_JFES)
-				with_dt = 0;
-	#endif
+				uint8_t with_dt = 0;
+				if (outMode == textMode) with_dt = 1;
 				Report(NULL, with_dt, "%s\r\n", printOut(tmp));
 			break;
 			case msg_iMPU:
