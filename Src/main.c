@@ -30,8 +30,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <malloc.h>
+
 #include "hdr.h"
 #include "stm32f4xx_hal_adc.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -39,7 +42,7 @@
 
 #define MAX_TMP_SIZE  256
 #define MAX_FIFO_SIZE  32
-#define MAX_UART_BUF  512
+#define MAX_UART_BUF 1024//512
 #define MAX_VCC_BUF     8
 #define MAX_COMP_BUF    8
 
@@ -128,9 +131,8 @@ char rxByte = '\0';
 uint8_t rx_uk = 0;
 uint16_t rxBytes = 0;
 char stx[MAX_TMP_SIZE] = {0};
-char tmp[MAX_TMP_SIZE << 1] = {0};
-//char txData[MAX_TMP_SIZE << 1] = {0};
-volatile uint32_t txDoneCnt = 0;
+char tmp[MAX_UART_BUF] = {0};
+char txData[MAX_UART_BUF] = {0};
 volatile uint8_t txDoneFlag = 1;
 volatile uint8_t ledValue = 0;
 uint32_t next = 0;
@@ -142,6 +144,7 @@ uint32_t tx_icnt = 0, rx_icnt = 0;
 //
 
 uint8_t outMode = textMode;
+uint8_t outDebug = 0;
 
 //
 #ifdef SET_OLED_SPI
@@ -199,11 +202,17 @@ uint32_t cikl_out = _5s;
 	uint8_t mpuStatus;
 #endif
 
+
 #ifdef SET_JFES
 	jfes_config_t conf;
 	jfes_config_t *jconf = NULL;
 	int jtune = 0;
+	jfes_status_t jfes_stat = jfes_success;
 #endif
+
+
+struct mallinfo mem_info;// = mallinfo();
+
 
 
 /* USER CODE END PV */
@@ -365,10 +374,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 //-----------------------------------------------------------------------------
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
-	if (huart->Instance == USART1) {
-		txDoneFlag = 1;
-		txDoneCnt++;
-	}
+	if (huart->Instance == USART1) txDoneFlag = 1;
 }
 //-----------------------------------------------------------------------------
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
@@ -478,12 +484,12 @@ void Report(const char *tag, unsigned char addTime, const char *fmt, ...)
 va_list args;
 size_t len = MAX_UART_BUF;
 int dl = 0;
-//char *buff = &txData[0];
+char *buff = &txData[0];
 
 	if (!txDoneFlag) return;
 
-	char *buff = (char *)calloc(1, len);//pvPortMalloc(len);//vPortFree(buff);
-	if (buff) {
+//	char *buff = (char *)calloc(1, len);//pvPortMalloc(len);//vPortFree(buff);
+//	if (buff) {
 		txDoneFlag = 0;
 
 		if (addTime) dl = sec_to_str_time(buff);
@@ -491,6 +497,7 @@ int dl = 0;
 
 		va_start(args, fmt);
 		vsnprintf(buff + dl, len - dl, fmt, args);
+		va_end(args);
 
 		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)buff, strlen(buff));
 
@@ -499,9 +506,9 @@ int dl = 0;
 				//HAL_Delay(1);
 		}*/
 
-		va_end(args);
-		free(buff);//vPortFree(buff);
-	}
+		//va_end(args);
+//		free(buff);//vPortFree(buff);
+//	}
 }
 //------------------------------------------------------------------------------------------
 void set_Date(time_t ep)
@@ -634,64 +641,73 @@ char *printOut(char *tmp)
 switch (outMode) {
 	case jfesMode:
 	{
+		jfes_stat = jfes_success;
 		jfes_value_t *obj = jfes_create_object_value(jconf);
 		if (obj) {
+			jfes_value_t *arr1 = NULL, *arr2 = NULL, *arr3 = NULL;
 			char dt[32] = {0};
 			sec_to_str_time(dt);
-			jfes_set_object_property(jconf, obj, jfes_create_string_value(jconf, dt, 0), "time", 0);
-			jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, tik), "ms", 0);
-			jfes_value_t *arr1 = jfes_create_array_value(jconf);
+			if ((jfes_stat = jfes_set_object_property(jconf, obj, jfes_create_string_value(jconf, dt, 0), "time", 0)) != jfes_success) break;
+			if ((jfes_stat = jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, tik), "ms", 0)) != jfes_success) break;
+			arr1 = jfes_create_array_value(jconf);
 			if (arr1) {
-				jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, cnt_evt));
-				jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, max_evt));
-				jfes_set_object_property(jconf, obj, arr1, "fifo", 0);
+				if ((jfes_stat = jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, cnt_evt))) != jfes_success) break;
+				if ((jfes_stat = jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, max_evt))) != jfes_success) break;
+				if ((jfes_stat = jfes_set_object_property(jconf, obj, arr1, "fifo", 0)) != jfes_success) break;
 			}
-			if (devError) jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, devError), "devError", 0);
-			jfes_set_object_property(jconf, obj, jfes_create_double_value(jconf, VccF), "volt", 0);
-			//
+			if (devError) {
+				if ((jfes_stat = jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, devError), "devError", 0)) != jfes_success) break;
+			}
+			if ((jfes_stat = jfes_set_object_property(jconf, obj, jfes_create_double_value(jconf, VccF), "volt", 0)) != jfes_success) break;
 #ifdef SET_BMx280
 			jfes_value_t *sens1 = jfes_create_object_value(jconf);
 			if (sens1) {
-				jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_pres), "press", 0);
-				jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_temp), "temp", 0);
+				if ((jfes_stat = jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_pres), "press", 0)) != jfes_success) break;
+				if ((jfes_stat = jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_temp), "temp", 0)) != jfes_success) break;
 				if (reg_id == BME280_SENSOR)
-					jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_humi), "humi", 0);
-				jfes_set_object_property(jconf, obj, sens1, bmxName, 0);//"sensName"
+					if ((jfes_stat = jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_humi), "humi", 0)) != jfes_success) break;
+				if ((jfes_stat = jfes_set_object_property(jconf, obj, sens1, bmxName, 0)) != jfes_success) break;
 			} else devError |= devMem;
 #endif
-			//
 			jfes_value_t *sens2 = jfes_create_object_value(jconf);
 			if (sens2) {
-				jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.angleHMC), "azimut", 0);
-				jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.tempHMC), "temp2", 0);
-				jfes_set_object_property(jconf, obj, sens2, "QMC5883L", 0);//"sensName"
+				if ((jfes_stat = jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.angleHMC), "azimut", 0)) != jfes_success) break;
+				if ((jfes_stat = jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.tempHMC), "temp2", 0)) != jfes_success) break;
+				if ((jfes_stat = jfes_set_object_property(jconf, obj, sens2, "QMC5883L", 0)) != jfes_success) break;
 			} else devError |= devMem;
-			//
+
 			jfes_value_t *sens3 = jfes_create_object_value(jconf);
 			if (sens3) {
-				jfes_set_object_property(jconf, sens3, jfes_create_integer_value(jconf, mpuStatus), "stat", 0);
-				jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.TEMP), "temp3", 0);
-				jfes_value_t *arr2 = jfes_create_array_value(jconf);
+				if ((jfes_stat = jfes_set_object_property(jconf, sens3, jfes_create_integer_value(jconf, mpuStatus), "stat", 0)) != jfes_success) break;
+				if ((jfes_stat = jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.TEMP), "temp3", 0)) != jfes_success) break;
+				arr2 = jfes_create_array_value(jconf);
 				if (arr2) {
-					jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.xACCEL));
-					jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.yACCEL));
-					jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.zACCEL));
-					jfes_set_object_property(jconf, sens3, arr2, "accel", 0);
+					if ((jfes_stat = jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.xACCEL))) != jfes_success) break;
+					if ((jfes_stat = jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.yACCEL))) != jfes_success) break;
+					if ((jfes_stat = jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.zACCEL))) != jfes_success) break;
+					if ((jfes_stat = jfes_set_object_property(jconf, sens3, arr2, "accel", 0)) != jfes_success) break;
 				}
-				jfes_value_t *arr3 = jfes_create_array_value(jconf);
+				arr3 = jfes_create_array_value(jconf);
 				if (arr3) {
-					jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.xGYRO));
-					jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.yGYRO));
-					jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.zGYRO));
-					jfes_set_object_property(jconf, sens3, arr3, "gyro", 0);
+					if ((jfes_stat = jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.xGYRO))) != jfes_success) break;
+					if ((jfes_stat = jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.yGYRO))) != jfes_success) break;
+					if ((jfes_stat = jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.zGYRO))) != jfes_success) break;
+					if ((jfes_stat = jfes_set_object_property(jconf, sens3, arr3, "gyro", 0)) != jfes_success) break;
 				}
-				jfes_set_object_property(jconf, obj, sens3, "MPU6050", 0);//"sensName"
+				if ((jfes_stat = jfes_set_object_property(jconf, obj, sens3, "MPU6050", 0)) != jfes_success) break;
 			} else devError |= devMem;
 			//
 			jfes_size_t ssize  = (jfes_size_t)((MAX_TMP_SIZE << 1) - 1);
-			jfes_value_to_string(obj, tmp, &ssize, jtune);
+			if ((jfes_stat = jfes_value_to_string(obj, tmp, &ssize, jtune)) != jfes_success) break;
 			*(tmp + ssize) = '\0';
 			strcat(tmp, ">");
+
+			//if (arr3) jfes_free_value(jconf, arr3);
+			//if (sens3) jfes_free_value(jconf, sens3);
+			//if (arr2) jfes_free_value(jconf, arr2);
+			//if (sens2) jfes_free_value(jconf, sens2);
+			//if (arr1) jfes_free_value(jconf, arr1);
+			//if (sens1) jfes_free_value(jconf, sens1);
 
 			jfes_free_value(jconf, obj);
 		} else devError |= devMem;
@@ -750,6 +766,40 @@ switch (outMode) {
 	}
 }
 
+/*struct mallinfo {
+	int arena;     // Non-mmapped space allocated (bytes)
+    int ordblks;   // Number of free chunks
+    int smblks;    // Number of free fastbin blocks
+    int hblks;     // Number of mmapped regions
+    int hblkhd;    // Space allocated in mmapped regions (bytes)
+    int usmblks;   // Maximum total allocated space (bytes)
+    int fsmblks;   // Space in freed fastbin blocks (bytes)
+    int uordblks;  // Total allocated space (bytes)
+    int fordblks;  // Total free space (bytes)
+    int keepcost;  // Top-most, releasable space (bytes)
+};*/
+	if (outDebug) {
+		mem_info = mallinfo();
+		sprintf(tmp+strlen(tmp), "\r\n(noused=%d #freeChunk=%d #freeBlk=%d #mapReg=%d busy=%d max_busy=%d #freedBlk=%d used=%d free=%d top=%d)",
+			mem_info.arena,
+			mem_info.ordblks,
+			mem_info.smblks,
+			mem_info.hblks,
+			mem_info.hblkhd,
+			mem_info.usmblks,
+			mem_info.fsmblks,
+			mem_info.uordblks,
+			mem_info.fordblks,
+			mem_info.keepcost);
+	}
+	//
+	if (outMode == jfesMode) {
+		if (jfes_stat != jfes_success) {
+			devError |= devJfes;
+			sprintf(tmp, "devError=0x%02X jfes_stat=%d", devError, (int8_t)jfes_stat);
+		}
+	}
+
 	return &tmp[0];
 }
 //-------------------------------------------------------------------------------------------
@@ -794,6 +844,8 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
+
+
     sprintf(devName, "- Speed:%lu -", huart1.Init.BaudRate);
 
   	// start timer1 + interrupt
@@ -813,6 +865,7 @@ int main(void)
 
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
+
 
 #ifdef SET_JFES
     conf.jfes_malloc = (jfes_malloc_t)getMem;
@@ -986,27 +1039,31 @@ int main(void)
 					}
 				}
 #ifdef SET_JFES
-				else if ((uk = strstr(stx, "jtune_on")) != NULL) {
+				else if (strstr(stx, "jtune_on") != NULL) {
 					jtune = 1;
-				} else if ((uk = strstr(stx, "jtune_off")) != NULL) {
+				} else if (strstr(stx, "jtune_off") != NULL) {
 					jtune = 0;
-				} else if ((uk = strstr(stx, "jfes")) != NULL) {
+				} else if (strstr(stx, "jfes") != NULL) {
 					outMode = jfesMode;
-				} else if ((uk = strstr(stx, "json")) != NULL) {
+				} else if (strstr(stx, "json") != NULL) {
 					outMode = jsonMode;
-				} else if ((uk = strstr(stx, "text")) != NULL) {
+				} else if (strstr(stx, "text") != NULL) {
 					outMode = textMode;
 				}
 #endif
-				else if ((uk = strstr(stx, "get")) != NULL) {
+				else if (strstr(stx, "dbg_on") != NULL) {
+					outDebug = 1;
+				} else if (strstr(stx, "dbg_off") != NULL) {
+					outDebug = 0;
+				} else if (strstr(stx, "get") != NULL) {
 					//putMsg(msg_out);
 					tmr_out = getTimer(_1ms);
-				} else if ((uk = strstr(stx, "rst")) != NULL) {
+				} else if (strstr(stx, "rst") != NULL) {
 					putMsg(msg_rst);
 				} else if ((uk = strstr(stx, "period=")) != NULL) {
 					int val = atoi(uk + 7);
 					if ((val > 0) && (val <= 10000)) cikl_out = val;
-				} else if ((uk = strstr(stx, "shift")) != NULL) {
+				} else if (strstr(stx, "shift") != NULL) {
 					if (shiftStart == OLED_CMD_SHIFT_STOP) shiftStart = OLED_CMD_SHIFT_START;
 					                                  else shiftStart = OLED_CMD_SHIFT_STOP;
 					putMsg(msg_shiftEvent);

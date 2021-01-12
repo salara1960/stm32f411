@@ -24,6 +24,7 @@
 #ifdef SET_JFES
 	#define JFES_DOUBLE_PRECISION 0.01//0.000000001
 	#define SET_CALLOC_MEM
+	//#define SET_MALLOC_MEM
 #endif
 
 

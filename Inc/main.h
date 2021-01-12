@@ -42,6 +42,7 @@ extern "C" {
 #include <math.h>
 #include <stdarg.h>
 
+
 #include "hdr.h"
 #include "sensors.h"
 #include "ssd1306.h"
@@ -82,13 +83,14 @@ typedef enum {
 
 enum {
 	devOK = 0,
-	devI2C1,
-	devSPI = 4,
-	devUART = 8,
-	devADC = 0x10,
-	devTmr2 = 0x20,
-	devFifo = 0x40,
-	devMem = 0x80
+	devI2C1 = 1,
+	devSPI = 2,
+	devUART = 4,
+	devADC = 8,
+	devTmr2 = 0x10,
+	devFifo = 0x20,
+	devMem = 0x40,
+	devJfes = 0x80
 };
 
 enum {
