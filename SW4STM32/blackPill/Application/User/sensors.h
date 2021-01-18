@@ -136,12 +136,12 @@
 			float Acce_Mult; // Accelerometer corrector from raw data to "g". Only for private use
 			float Gyro_Mult; // Gyroscope corrector from raw data to "degrees/s". Only for private use
 			float TEMP;
-			float xACCEL;
-			float yACCEL;
-			float zACCEL;
-			float xGYRO;
-			float yGYRO;
-			float zGYRO;
+			int16_t xACCEL;
+			int16_t yACCEL;
+			int16_t zACCEL;
+			int16_t xGYRO;
+			int16_t yGYRO;
+			int16_t zGYRO;
 		} mpu_data_t;
 	#pragma pack(pop)
 

@@ -210,13 +210,13 @@ uint8_t adr = MPU6050_ACCEL_XOUT_H;
 //-----------------------------------------------------------------------------
 void mpuConvData()
 {
-	mpu_data.xACCEL = (float)((int16_t)(htons(mpu_all_data.ACCEL_XOUT))) * mpu_data.Acce_Mult;
-	mpu_data.yACCEL = (float)((int16_t)(htons(mpu_all_data.ACCEL_YOUT))) * mpu_data.Acce_Mult;
-	mpu_data.zACCEL = (float)((int16_t)(htons(mpu_all_data.ACCEL_ZOUT))) * mpu_data.Acce_Mult;
+	mpu_data.xACCEL = ((int16_t)(htons(mpu_all_data.ACCEL_XOUT))) * mpu_data.Acce_Mult;
+	mpu_data.yACCEL = ((int16_t)(htons(mpu_all_data.ACCEL_YOUT))) * mpu_data.Acce_Mult;
+	mpu_data.zACCEL = ((int16_t)(htons(mpu_all_data.ACCEL_ZOUT))) * mpu_data.Acce_Mult;
 	mpu_data.TEMP   = (float)((int16_t)(htons(mpu_all_data.TEMP_OUT)) / 340.0 + 36.53);
-	mpu_data.xGYRO  = (float)((int16_t)(htons(mpu_all_data.GYRO_XOUT))) * mpu_data.Gyro_Mult;
-	mpu_data.yGYRO  = (float)((int16_t)(htons(mpu_all_data.GYRO_YOUT))) * mpu_data.Gyro_Mult;
-	mpu_data.zGYRO  = (float)((int16_t)(htons(mpu_all_data.GYRO_ZOUT))) * mpu_data.Gyro_Mult;
+	mpu_data.xGYRO  = ((int16_t)(htons(mpu_all_data.GYRO_XOUT))) * mpu_data.Gyro_Mult;
+	mpu_data.yGYRO  = ((int16_t)(htons(mpu_all_data.GYRO_YOUT))) * mpu_data.Gyro_Mult;
+	mpu_data.zGYRO  = ((int16_t)(htons(mpu_all_data.GYRO_ZOUT))) * mpu_data.Gyro_Mult;
 }
 //-----------------------------------------------------------------------------
 void mpuEnableInterrupts()

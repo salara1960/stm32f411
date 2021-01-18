@@ -106,6 +106,7 @@ SPI_HandleTypeDef hspi4;
 DMA_HandleTypeDef hdma_spi4_tx;
 
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_tx;
@@ -123,8 +124,8 @@ uint8_t cnt_evt = 0;
 uint8_t max_evt = 0;
 
 volatile uint32_t tik = 0;
-volatile time_t epoch = 1608809730;//1608735394;//1608553951;
-uint8_t tZone = 0;//GMT
+volatile time_t epoch = 1610786184;
+uint8_t tZone = 2;
 volatile uint8_t setDate = 0;
 char rxData[MAX_TMP_SIZE] = {0};
 char rxByte = '\0';
@@ -132,7 +133,7 @@ uint8_t rx_uk = 0;
 uint16_t rxBytes = 0;
 char stx[MAX_TMP_SIZE] = {0};
 char tmp[MAX_UART_BUF] = {0};
-char txData[MAX_UART_BUF] = {0};
+//char txData[MAX_UART_BUF] = {0};
 volatile uint8_t txDoneFlag = 1;
 volatile uint8_t ledValue = 0;
 uint32_t next = 0;
@@ -143,7 +144,8 @@ int siCmd = 0;
 uint32_t tx_icnt = 0, rx_icnt = 0;
 //
 
-uint8_t outMode = textMode;
+int jtune = 0;//set output in single string
+uint8_t outMode = cjsonMode;
 uint8_t outDebug = 0;
 
 //
@@ -170,16 +172,15 @@ uint8_t outDebug = 0;
 compas_data_t compData = {0.0, 0.0};
 I2C_HandleTypeDef *portHMC = NULL;
 
-
 ADC_HandleTypeDef *portADC = NULL;
 volatile uint16_t adcValue = 0;
 volatile float VccF = 0.0;
 uint32_t iadc_cnt = 0;
 uint8_t startADC = 1;
-uint16_t VccBuf[MAX_VCC_BUF] = {0};//буфер для накопления данных перед усреднением
+uint16_t VccBuf[MAX_VCC_BUF] = {0};
 uint8_t VccValCounter = 0;
 
-float CompBuf[MAX_COMP_BUF] = {0};//буфер для накопления данных перед усреднением
+float CompBuf[MAX_COMP_BUF] = {0};
 uint8_t CompValCounter = 0;
 
 uint32_t one_sec = 0;
@@ -203,16 +204,35 @@ uint32_t cikl_out = _5s;
 #endif
 
 
-#ifdef SET_JFES
-	jfes_config_t conf;
-	jfes_config_t *jconf = NULL;
-	int jtune = 0;
-	jfes_status_t jfes_stat = jfes_success;
-#endif
-
-
 struct mallinfo mem_info;// = mallinfo();
 
+#ifdef SET_IRED
+
+	const one_key_t keyAll[MAX_IRED_KEY] = {
+			{"irCH-",   0xe318261b},
+			{"irCH",    0x00511dbb},
+			{"irCH+",   0xee886d7f},
+			{"irLEFT",  0x52a3d41f},
+			{"irRIGHT", 0xd7e84b1b},
+			{"irSP",    0x20fe4dbb},
+			{"ir-",     0xf076c13b},
+			{"ir+",     0xa3c8eddb},
+			{"irEQ",    0xe5cfbd7f},
+			{"ir100+",  0x97483bfb},
+			{"ir200+",  0xf0c41643},
+			{"ir0",     0xc101e57b},
+			{"ir1",     0x9716be3f},
+			{"ir2",     0x3d9ae3f7},
+			{"ir3",     0x6182021b},
+			{"ir4",     0x8c22657b},
+			{"ir5",     0x488f3cbb},
+			{"ir6",     0x0449e79f},
+			{"ir7",     0x32c6fdf7},
+			{"ir8",     0x1bc0157b},
+			{"ir9",     0x3ec3fc1b}
+	};
+
+#endif
 
 
 /* USER CODE END PV */
@@ -227,12 +247,8 @@ static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI4_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
-
-//void set_Date(time_t epoch);
-//uint32_t get_Date();
-//int sec_to_str_time(char *st);
-//void Report(const char *tag, unsigned char addTime, const char *fmt, ...);
 
 /* USER CODE END PFP */
 
@@ -350,6 +366,53 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		}
 		//
 	}
+#ifdef SET_IRED
+	else if (htim->Instance == TIM4) {
+		uint8_t irdata = RECIV_PIN; // пин для приёма
+		irparams.timer++;  // One more 50uS tick
+		if (irparams.rawlen >= RAWBUF) irparams.rcvstate = STATE_OVERFLOW;  // Buffer overflow
+
+		switch(irparams.rcvstate) {
+			case STATE_IDLE: // In the middle of a gap
+				if (irdata == MARK) {
+					if (irparams.timer < GAP_TICKS) { // Not big enough to be a gap.
+						irparams.timer = 0;
+					} else {
+						// Gap just ended; Record duration; Start recording transmission
+						irparams.overflow = 0;
+						irparams.rawlen  = 0;
+						irparams.rawbuf[irparams.rawlen++] = irparams.timer;
+						irparams.timer = 0;
+						irparams.rcvstate = STATE_MARK;
+					}
+				}
+			break;
+			case STATE_MARK:  // Timing Mark
+				if (irdata == SPACE) {// Mark ended; Record time
+					irparams.rawbuf[irparams.rawlen++] = irparams.timer;
+					irparams.timer = 0;
+					irparams.rcvstate = STATE_SPACE;
+				}
+			break;
+			case STATE_SPACE:  // Timing Space
+				if (irdata == MARK) {// Space just ended; Record time
+					irparams.rawbuf[irparams.rawlen++] = irparams.timer;
+					irparams.timer = 0;
+					irparams.rcvstate = STATE_MARK;
+				} else if (irparams.timer > GAP_TICKS) {// Space
+					irparams.rcvstate = STATE_STOP;
+				}
+			break;
+			case STATE_STOP:  // Waiting; Measuring Gap
+			 	if (irdata == MARK) irparams.timer = 0;  // Reset gap timer
+			break;
+			case STATE_OVERFLOW:  // Flag up a read overflow; Stop the State Machine
+				irparams.overflow = 1;
+				irparams.rcvstate = STATE_STOP;
+			break;
+		}
+	}
+#endif
   /* USER CODE END Callback 1 */
 }
 //----------------------------------------------------------------------------------------
@@ -449,29 +512,9 @@ void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 //-----------------------------------------------------------------------------
 int sec_to_str_time(char *st)
 {
-/*
-struct tm ts;
-time_t sec = (time_t)getSec();
-
-	localtime_r(&sec, &ts);
-	sprintf(st, "%02u.%02u %02u:%02u:%02u",
-				ts.tm_mday, ts.tm_mon + 1,
-				ts.tm_hour + tZone, ts.tm_min, ts.tm_sec);
-	return strlen(st);
-
-struct tm ts;
-uint32_t sec = getSec();
-char buf[64];
-
-	localtime_r(&sec, &ts);
-	strftime(buf, sizeof(buf), "%d.%m %H:%M:%S", &ts);
-	strcpy(st, buf);
-
-	return strlen(st);
-*/
-
 RTC_TimeTypeDef sTime;
 RTC_DateTypeDef sDate;
+
 	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
 	return (sprintf(st, "%02u.%02u %02u:%02u:%02u",
@@ -484,12 +527,12 @@ void Report(const char *tag, unsigned char addTime, const char *fmt, ...)
 va_list args;
 size_t len = MAX_UART_BUF;
 int dl = 0;
-char *buff = &txData[0];
+//char *buff = &txData[0];
 
 	if (!txDoneFlag) return;
 
-//	char *buff = (char *)calloc(1, len);//pvPortMalloc(len);//vPortFree(buff);
-//	if (buff) {
+	char *buff = (char *)calloc(1, len);//pvPortMalloc(len);//vPortFree(buff);
+	if (buff) {
 		txDoneFlag = 0;
 
 		if (addTime) dl = sec_to_str_time(buff);
@@ -506,9 +549,8 @@ char *buff = &txData[0];
 				//HAL_Delay(1);
 		}*/
 
-		//va_end(args);
-//		free(buff);//vPortFree(buff);
-//	}
+		free(buff);//vPortFree(buff);
+	}
 }
 //------------------------------------------------------------------------------------------
 void set_Date(time_t ep)
@@ -608,143 +650,136 @@ void procCompas()
 	}
 }
 //------------------------------------------------------------------------------------------
-#ifdef SET_JFES
-
-void *getMem(size_t len)
-{
-#ifdef SET_CALLOC_MEM
-		return (calloc(1, len));
-#else
-	#ifdef SET_MALLOC_MEM
-		return (malloc(len));
-	#else
-		return (pvPortMalloc(len));
-	#endif
-#endif
-}
-//------------------------------------------------------------------------------------
-void freeMem(void *mem)
-{
-#if defined(SET_CALLOC_MEM) || defined(SET_MALLOC_MEM)
-		free(mem);
-#else
-		vPortFree(mem);
-#endif
-}
-
-#endif
 //------------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------
 char *printOut(char *tmp)
 {
 
 switch (outMode) {
-	case jfesMode:
+
+#ifdef SET_cJSON
+	case cjsonMode:
 	{
-		jfes_stat = jfes_success;
-		jfes_value_t *obj = jfes_create_object_value(jconf);
+		cJSON *obj = cJSON_CreateObject();
 		if (obj) {
-			jfes_value_t *arr1 = NULL, *arr2 = NULL, *arr3 = NULL;
 			char dt[32] = {0};
 			sec_to_str_time(dt);
-			if ((jfes_stat = jfes_set_object_property(jconf, obj, jfes_create_string_value(jconf, dt, 0), "time", 0)) != jfes_success) break;
-			if ((jfes_stat = jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, tik), "ms", 0)) != jfes_success) break;
-			arr1 = jfes_create_array_value(jconf);
+			cJSON_AddItemToObject(obj, "time", cJSON_CreateString(dt));
+			cJSON_AddItemToObject(obj, "ms", cJSON_CreateNumber(tik));
+			cJSON *arr1 = cJSON_CreateArray();
 			if (arr1) {
-				if ((jfes_stat = jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, cnt_evt))) != jfes_success) break;
-				if ((jfes_stat = jfes_place_to_array(jconf, arr1, jfes_create_integer_value(jconf, max_evt))) != jfes_success) break;
-				if ((jfes_stat = jfes_set_object_property(jconf, obj, arr1, "fifo", 0)) != jfes_success) break;
-			}
-			if (devError) {
-				if ((jfes_stat = jfes_set_object_property(jconf, obj, jfes_create_integer_value(jconf, devError), "devError", 0)) != jfes_success) break;
-			}
-			if ((jfes_stat = jfes_set_object_property(jconf, obj, jfes_create_double_value(jconf, VccF), "volt", 0)) != jfes_success) break;
+				cJSON_AddItemToArray(arr1, cJSON_CreateNumber((int)cnt_evt));
+				cJSON_AddItemToArray(arr1, cJSON_CreateNumber((int)max_evt));
+				cJSON_AddItemToObject(obj, "fifo", arr1);
+			} else devError |= devMem;
+			cJSON_AddItemToObject(obj, "devError", cJSON_CreateNumber(devError));
+			cJSON_AddItemToObject(obj, "volt", cJSON_CreateNumber(VccF));
+			//
 #ifdef SET_BMx280
-			jfes_value_t *sens1 = jfes_create_object_value(jconf);
+			cJSON *sens1 = cJSON_CreateObject();
 			if (sens1) {
-				if ((jfes_stat = jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_pres), "press", 0)) != jfes_success) break;
-				if ((jfes_stat = jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_temp), "temp", 0)) != jfes_success) break;
-				if (reg_id == BME280_SENSOR)
-					if ((jfes_stat = jfes_set_object_property(jconf, sens1, jfes_create_double_value(jconf, sensors.bmx_humi), "humi", 0)) != jfes_success) break;
-				if ((jfes_stat = jfes_set_object_property(jconf, obj, sens1, bmxName, 0)) != jfes_success) break;
+				cJSON_AddItemToObject(sens1, "pres", cJSON_CreateNumber(sensors.bmx_pres));
+				cJSON_AddItemToObject(sens1, "temp", cJSON_CreateNumber(sensors.bmx_temp));
+				if (reg_id == BME280_SENSOR) cJSON_AddItemToObject(sens1, "humi", cJSON_CreateNumber(sensors.bmx_humi));
+				cJSON_AddItemToObject(obj, bmxName, sens1);
 			} else devError |= devMem;
 #endif
-			jfes_value_t *sens2 = jfes_create_object_value(jconf);
+			//
+			cJSON *sens2 = cJSON_CreateObject();
 			if (sens2) {
-				if ((jfes_stat = jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.angleHMC), "azimut", 0)) != jfes_success) break;
-				if ((jfes_stat = jfes_set_object_property(jconf, sens2, jfes_create_double_value(jconf, compData.tempHMC), "temp2", 0)) != jfes_success) break;
-				if ((jfes_stat = jfes_set_object_property(jconf, obj, sens2, "QMC5883L", 0)) != jfes_success) break;
-			} else devError |= devMem;
-
-			jfes_value_t *sens3 = jfes_create_object_value(jconf);
-			if (sens3) {
-				if ((jfes_stat = jfes_set_object_property(jconf, sens3, jfes_create_integer_value(jconf, mpuStatus), "stat", 0)) != jfes_success) break;
-				if ((jfes_stat = jfes_set_object_property(jconf, sens3, jfes_create_double_value(jconf, mpu_data.TEMP), "temp3", 0)) != jfes_success) break;
-				arr2 = jfes_create_array_value(jconf);
-				if (arr2) {
-					if ((jfes_stat = jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.xACCEL))) != jfes_success) break;
-					if ((jfes_stat = jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.yACCEL))) != jfes_success) break;
-					if ((jfes_stat = jfes_place_to_array(jconf, arr2, jfes_create_double_value(jconf, mpu_data.zACCEL))) != jfes_success) break;
-					if ((jfes_stat = jfes_set_object_property(jconf, sens3, arr2, "accel", 0)) != jfes_success) break;
-				}
-				arr3 = jfes_create_array_value(jconf);
-				if (arr3) {
-					if ((jfes_stat = jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.xGYRO))) != jfes_success) break;
-					if ((jfes_stat = jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.yGYRO))) != jfes_success) break;
-					if ((jfes_stat = jfes_place_to_array(jconf, arr3, jfes_create_double_value(jconf, mpu_data.zGYRO))) != jfes_success) break;
-					if ((jfes_stat = jfes_set_object_property(jconf, sens3, arr3, "gyro", 0)) != jfes_success) break;
-				}
-				if ((jfes_stat = jfes_set_object_property(jconf, obj, sens3, "MPU6050", 0)) != jfes_success) break;
+				cJSON_AddItemToObject(sens2, "azimut", cJSON_CreateNumber(compData.angleHMC));
+				cJSON_AddItemToObject(sens2, "temp2", cJSON_CreateNumber(compData.tempHMC));
+				cJSON_AddItemToObject(obj, "QMC5883L", sens2);
 			} else devError |= devMem;
 			//
-			jfes_size_t ssize  = (jfes_size_t)((MAX_TMP_SIZE << 1) - 1);
-			if ((jfes_stat = jfes_value_to_string(obj, tmp, &ssize, jtune)) != jfes_success) break;
-			*(tmp + ssize) = '\0';
-			strcat(tmp, ">");
+			cJSON *sens3 = cJSON_CreateObject();
+			if (sens3) {
+				cJSON_AddItemToObject(sens3, "stat", cJSON_CreateNumber(mpuStatus));
+				cJSON_AddItemToObject(sens3, "temp3", cJSON_CreateNumber(mpu_data.TEMP));
+				cJSON *arr2 = cJSON_CreateArray();
+				if (arr2) {
+					cJSON_AddItemToArray(arr2, cJSON_CreateNumber(mpu_data.xACCEL));
+					cJSON_AddItemToArray(arr2, cJSON_CreateNumber(mpu_data.yACCEL));
+					cJSON_AddItemToArray(arr2, cJSON_CreateNumber(mpu_data.zACCEL));
+					cJSON_AddItemToObject(sens3, "accel", arr2);
+				} else devError |= devMem;
+				cJSON *arr3 = cJSON_CreateArray();
+				if (arr3) {
+					cJSON_AddItemToArray(arr3, cJSON_CreateNumber(mpu_data.xGYRO));
+					cJSON_AddItemToArray(arr3, cJSON_CreateNumber(mpu_data.yGYRO));
+					cJSON_AddItemToArray(arr3, cJSON_CreateNumber(mpu_data.zGYRO));
+					cJSON_AddItemToObject(sens3, "gyro", arr3);
+				} else devError |= devMem;
+				cJSON_AddItemToObject(obj, "MPU6050", sens3);
+			} else devError |= devMem;
+			//
+			char *st = cJSON_PrintBuffered(obj, sizeof(tmp) - 1, jtune);
+			if (st) {
+				strcpy(tmp, st);
+				strcat(tmp, ">");
+				free(st);
+			}
 
-			//if (arr3) jfes_free_value(jconf, arr3);
-			//if (sens3) jfes_free_value(jconf, sens3);
-			//if (arr2) jfes_free_value(jconf, arr2);
-			//if (sens2) jfes_free_value(jconf, sens2);
-			//if (arr1) jfes_free_value(jconf, arr1);
-			//if (sens1) jfes_free_value(jconf, sens1);
+			cJSON_Delete(obj);
 
-			jfes_free_value(jconf, obj);
 		} else devError |= devMem;
 	}
 	break;
+#endif
+
 	case jsonMode:
 	{
 		char dt[32] = {0};
 		sec_to_str_time(dt);
-		sprintf(tmp, "%s{%s  \"time\": \"%s\",%s  \"ms\": %lu,%s  \"fifo\": [%u,%u]",
-					cr_lf, cr_lf, dt, cr_lf, tik, cr_lf, cnt_evt, max_evt);
-		if (devError) sprintf(tmp+strlen(tmp), ",%s  \"devError\": 0x%02X", cr_lf, devError);
-		sprintf(tmp+strlen(tmp), ",%s  \"volt\": %.3f", cr_lf, VccF);
+		if (jtune) {
+			sprintf(tmp, "{%s  \"time\": \"%s\",%s  \"ms\": %lu,%s  \"fifo\": [%u,%u]",
+					cr_lf, dt, cr_lf, tik, cr_lf, cnt_evt, max_evt);
+			sprintf(tmp+strlen(tmp), ",%s  \"devError\": %X", cr_lf, devError);
+			sprintf(tmp+strlen(tmp), ",%s  \"volt\": %.3f", cr_lf, VccF);
 #ifdef SET_BMx280
-		sprintf(tmp+strlen(tmp), ",%s  \"%s\": {%s    \"press\": %.2f,%s    \"temp\": %.2f",
+			sprintf(tmp+strlen(tmp), ",%s  \"%s\": {%s    \"pres\": %.2f,%s    \"temp\": %.2f",
 					cr_lf, bmxName, cr_lf, sensors.bmx_pres, cr_lf, sensors.bmx_temp);
-		if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), ",%s    \"humi\": %.2f", cr_lf, sensors.bmx_humi);
-		sprintf(tmp+strlen(tmp), "%s  }", cr_lf);
+			if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), ",%s    \"humi\": %.2f", cr_lf, sensors.bmx_humi);
+			sprintf(tmp+strlen(tmp), "%s  }", cr_lf);
 #endif
-		sprintf(tmp+strlen(tmp), ",%s  \"QMC5883L\": {%s    \"azimut\": %.2f,%s    \"temp2\": %.2f%s  }" ,
+			sprintf(tmp+strlen(tmp), ",%s  \"QMC5883L\": {%s    \"azimut\": %.2f,%s    \"temp2\": %.2f%s  }" ,
 					cr_lf, cr_lf, compData.angleHMC, cr_lf, compData.tempHMC, cr_lf);
 #ifdef SET_MPU
-		sprintf(tmp+strlen(tmp), ",%s  \"MPU6050\": {%s    \"stat\": %X,%s    \"temp3\": %.2f,%s    \"accel\": [%.2f,%.2f,%.2f],%s    \"gyro\": [%.2f,%.2f,%.2f]%s  }",
+			sprintf(tmp+strlen(tmp), ",%s  \"MPU6050\": {%s    \"stat\": %X,%s    \"temp3\": %.2f,%s    \"accel\": [%d,%d,%d],%s    \"gyro\": [%d,%d,%d]%s  }%s",
 							cr_lf, cr_lf,
 							mpuStatus, cr_lf,
 							mpu_data.TEMP, cr_lf,
 							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL, cr_lf,
-							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO, cr_lf);
+							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO, cr_lf, cr_lf);
 #endif
-		sprintf(tmp+strlen(tmp), "%s}>", cr_lf);
+		} else {
+			sprintf(tmp, "{\"time\": \"%s\",\"ms\": %lu,\"fifo\": [%u,%u]", dt, tik, cnt_evt, max_evt);
+			sprintf(tmp+strlen(tmp), ",\"devError\": %X", devError);
+			sprintf(tmp+strlen(tmp), ",\"volt\": %.3f", VccF);
+#ifdef SET_BMx280
+			sprintf(tmp+strlen(tmp), ",\"%s\": {\"press\": %.2f,\"temp\": %.2f",
+					bmxName, sensors.bmx_pres, sensors.bmx_temp);
+			if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), ",\"humi\": %.2f", sensors.bmx_humi);
+			strcat(tmp, "}");
+#endif
+			sprintf(tmp+strlen(tmp), ",\"QMC5883L\": {\"azimut\": %.2f,\"temp2\": %.2f}", compData.angleHMC, compData.tempHMC);
+#ifdef SET_MPU
+			sprintf(tmp+strlen(tmp), ",\"MPU6050\": {\"stat\": %X,\"temp3\": %.2f,\"accel\": [%d,%d,%d],\"gyro\": [%d,%d,%d]}",
+							mpuStatus,
+							mpu_data.TEMP,
+							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL,
+							mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
+#endif
+
+		}
+		strcat(tmp, "}>");
 	}
 	break;
 
 	default : {// textMode
 
 		sprintf(tmp, " | ms=%lu fifo:%u/%u", tik, cnt_evt, max_evt);
-		if (devError) sprintf(tmp+strlen(tmp), " devError:0x%02X", devError);
+		sprintf(tmp+strlen(tmp), " devError=%X", devError);
 		sprintf(tmp+strlen(tmp), " | Vcc=%.3f", VccF);
 #ifdef SET_BMx280
 		sprintf(tmp+strlen(tmp)," | %s: pres=%.2f temp=%.2f",
@@ -756,7 +791,7 @@ switch (outMode) {
 			    			compData.angleHMC,
 							compData.tempHMC);
 #ifdef SET_MPU
-		sprintf(tmp+strlen(tmp)," | MPU6050: stat=%X temp3=%.2f accel=%.2f,%.2f,%.2f gyro=%.2f,%.2f,%.2f",
+		sprintf(tmp+strlen(tmp)," | MPU6050: stat=%X temp3=%.2f accel=%d,%d,%d gyro=%d,%d,%d",
 							mpuStatus,
 							mpu_data.TEMP,
 							mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL,
@@ -766,38 +801,19 @@ switch (outMode) {
 	}
 }
 
-/*struct mallinfo {
-	int arena;     // Non-mmapped space allocated (bytes)
-    int ordblks;   // Number of free chunks
-    int smblks;    // Number of free fastbin blocks
-    int hblks;     // Number of mmapped regions
-    int hblkhd;    // Space allocated in mmapped regions (bytes)
-    int usmblks;   // Maximum total allocated space (bytes)
-    int fsmblks;   // Space in freed fastbin blocks (bytes)
-    int uordblks;  // Total allocated space (bytes)
-    int fordblks;  // Total free space (bytes)
-    int keepcost;  // Top-most, releasable space (bytes)
-};*/
 	if (outDebug) {
 		mem_info = mallinfo();
 		sprintf(tmp+strlen(tmp), "\r\n(noused=%d #freeChunk=%d #freeBlk=%d #mapReg=%d busy=%d max_busy=%d #freedBlk=%d used=%d free=%d top=%d)",
-			mem_info.arena,
-			mem_info.ordblks,
-			mem_info.smblks,
-			mem_info.hblks,
-			mem_info.hblkhd,
-			mem_info.usmblks,
-			mem_info.fsmblks,
-			mem_info.uordblks,
-			mem_info.fordblks,
-			mem_info.keepcost);
-	}
-	//
-	if (outMode == jfesMode) {
-		if (jfes_stat != jfes_success) {
-			devError |= devJfes;
-			sprintf(tmp, "devError=0x%02X jfes_stat=%d", devError, (int8_t)jfes_stat);
-		}
+			mem_info.arena,// Non-mmapped space allocated (bytes)
+			mem_info.ordblks,// Number of free chunks
+			mem_info.smblks,// Number of free fastbin blocks
+			mem_info.hblks,// Number of mmapped regions
+			mem_info.hblkhd,// Space allocated in mmapped regions (bytes)
+			mem_info.usmblks,// Maximum total allocated space (bytes)
+			mem_info.fsmblks,// Space in freed fastbin blocks (bytes)
+			mem_info.uordblks,// Total allocated space (bytes)
+			mem_info.fordblks,// Total free space (bytes)
+			mem_info.keepcost);// Top-most, releasable space (bytes)
 	}
 
 	return &tmp[0];
@@ -842,6 +858,7 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI4_Init();
   MX_ADC1_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
 
@@ -866,13 +883,12 @@ int main(void)
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
 
-
-#ifdef SET_JFES
-    conf.jfes_malloc = (jfes_malloc_t)getMem;
-    conf.jfes_free = freeMem;
-    jconf = &conf;
+#ifdef SET_IRED
+	int8_t len8 = 0;
+	uint32_t tmr_ired = 0;
+	char trans_str[16] = {0};
+	enIntIRED();
 #endif
-
 
 #ifdef SET_OLED_SPI
     portOLED = &hspi4;
@@ -888,7 +904,7 @@ int main(void)
 //    spi_ssd1306_text_xy(devName, 1, shiftLine);
     //putMsg(msg_shiftEvent);
 
-    uint8_t sfst = 1;
+    //uint8_t sfst = 1;
 #endif
 
 
@@ -932,7 +948,6 @@ int main(void)
     next = getTimer(_100ms);
 #endif
 
-
     tmr_out = getTimer(_1s);
     next = getTimer(0);
     errStatCnt = 0;
@@ -945,6 +960,57 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1)  {
+
+#ifdef SET_IRED
+		if (!tmr_ired) {
+			if (decodeIRED(&results)) {
+				tmr_ired = getTimer(_300ms);
+				int8_t kid = -1, k;
+				for (int8_t i = 0; i < MAX_IRED_KEY; i++) {
+					if (results.value == keyAll[i].code) {
+						kid = i;
+						break;
+					}
+				}
+				if (kid == -1) k = sprintf(trans_str, " CODE:%08lX ", results.value);
+				          else k = sprintf(trans_str, " irKEY: %s ", keyAll[kid].name);
+				if (k < len8) spi_ssd1306_clear_line(8);
+				len8 = k;
+				spi_ssd1306_text_xy(trans_str, 1, 8);
+				if (kid != -1) {
+					switch (kid) {
+						case key_100: jtune = 1; break;
+						case key_200: jtune = 0; break;
+
+						case key_minus:
+							if (cikl_out >= 200) cikl_out -= 100;
+						break;
+						case key_plus:
+							if (cikl_out < 30000) cikl_out += 100;
+						break;
+
+						case key_0: outMode = textMode;  break;
+						case key_1: outMode = jsonMode;  break;
+						case key_2: outMode = cjsonMode; break;
+
+						case key_3: outDebug = 1; break;//dbg_on
+						case key_4: outDebug = 0; break;//dbg_off
+
+						case key_ch: putMsg(msg_rst); break;//rst
+
+						case key_eq: tmr_out = getTimer(_1ms); break;//out
+					}
+				}
+			}
+		}
+
+		if (tmr_ired) {
+			if (chkTimer(tmr_ired)) {
+				tmr_ired = 0;
+				resumeIRED();
+			}
+		}
+#endif
 
 		switch (getMsg()) {
 
@@ -1014,11 +1080,11 @@ int main(void)
 		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
 #endif
 		    	sprintf(line+strlen(line), " azimut:%.2f%c\n", compData.angleHMC, gradus);
-		    	if (sfst) {
+		    	/*if (sfst) {
 		    		sfst = 0;
 		    		sprintf(line+strlen(line), "%s", devName);
 		    		putMsg(msg_shiftEvent);
-		    	}
+		    	}*/
 		    	spi_ssd1306_text_xy(line, 2, 1);
 #endif
 		    break;
@@ -1033,36 +1099,36 @@ int main(void)
 							*uke = '\0';
 						} else tZone = 0;
 						uint32_t cep = atol(uk);
-						if (cep > 0) {
-							set_Date((time_t)cep);
-						}
+						if (cep > 0) set_Date((time_t)cep);
 					}
 				}
-#ifdef SET_JFES
-				else if (strstr(stx, "jtune_on") != NULL) {
+				else if (strstr(stx, "jtune_on") != NULL) {//key_100
 					jtune = 1;
-				} else if (strstr(stx, "jtune_off") != NULL) {
+				} else if (strstr(stx, "jtune_off") != NULL) {//key_200
 					jtune = 0;
-				} else if (strstr(stx, "jfes") != NULL) {
-					outMode = jfesMode;
-				} else if (strstr(stx, "json") != NULL) {
-					outMode = jsonMode;
-				} else if (strstr(stx, "text") != NULL) {
-					outMode = textMode;
+				}
+#ifdef SET_cJSON
+				else if (strstr(stx, "cjson") != NULL) {//key_2
+					outMode = cjsonMode;
 				}
 #endif
-				else if (strstr(stx, "dbg_on") != NULL) {
+				else if (strstr(stx, "json") != NULL) {//key_1
+					outMode = jsonMode;
+				} else if (strstr(stx, "text") != NULL) {//key_0
+					outMode = textMode;
+				}
+				else if (strstr(stx, "dbg_on") != NULL) {//key_3
 					outDebug = 1;
-				} else if (strstr(stx, "dbg_off") != NULL) {
+				} else if (strstr(stx, "dbg_off") != NULL) {//key_4
 					outDebug = 0;
-				} else if (strstr(stx, "get") != NULL) {
+				} else if (strstr(stx, "get") != NULL) {//key_eq
 					//putMsg(msg_out);
 					tmr_out = getTimer(_1ms);
-				} else if (strstr(stx, "rst") != NULL) {
+				} else if (strstr(stx, "rst") != NULL) {//key_ch
 					putMsg(msg_rst);
-				} else if ((uk = strstr(stx, "period=")) != NULL) {
+				} else if ((uk = strstr(stx, "period=")) != NULL) {//key_minus : -100ms, key_plus : +100ms
 					int val = atoi(uk + 7);
-					if ((val > 0) && (val <= 10000)) cikl_out = val;
+					if ((val > 0) && (val <= 30000)) cikl_out = val;
 				} else if (strstr(stx, "shift") != NULL) {
 					if (shiftStart == OLED_CMD_SHIFT_STOP) shiftStart = OLED_CMD_SHIFT_START;
 					                                  else shiftStart = OLED_CMD_SHIFT_STOP;
@@ -1070,7 +1136,7 @@ int main(void)
 				}
 			break;
 			case msg_rst:
-				HAL_Delay(500);
+				HAL_Delay(800);
 				NVIC_SystemReset();
 			break;
 			case msg_shiftEvent:
@@ -1093,13 +1159,11 @@ int main(void)
 				cntMPU++;
 				//
 	#ifdef SET_MPU_INTERRUPT
-					//STROB_DOWN();
 					mpuDisableInterrupts();
-					mpuStatus = mpuReadStatus();//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+					mpuStatus = mpuReadStatus();
 					//
 					siCmd = msg_mpuAllRead;
 					putMsg(msg_i2c);
-					//STROB_UP();
 	#endif
 				//
 #endif
@@ -1624,6 +1688,51 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 99;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 49;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -1720,6 +1829,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(iEXTI4_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : IRED_Pin */
+  GPIO_InitStruct.Pin = IRED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(IRED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : OLED_DC_Pin OLED_RST_Pin OLED_CS_Pin ERR_LED_Pin 
                            STROB_Pin */

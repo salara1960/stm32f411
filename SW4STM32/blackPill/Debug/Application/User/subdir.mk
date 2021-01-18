@@ -4,8 +4,9 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
+../Application/User/IRremote.c \
+../Application/User/cJSON.c \
 ../Application/User/font.c \
-../Application/User/jfes.c \
 /home/alarm/Project/STM32/TEST/blackPill/Src/main.c \
 ../Application/User/sensors.c \
 ../Application/User/ssd1306_spi.c \
@@ -13,8 +14,9 @@ C_SRCS += \
 /home/alarm/Project/STM32/TEST/blackPill/Src/stm32f4xx_it.c 
 
 OBJS += \
+./Application/User/IRremote.o \
+./Application/User/cJSON.o \
 ./Application/User/font.o \
-./Application/User/jfes.o \
 ./Application/User/main.o \
 ./Application/User/sensors.o \
 ./Application/User/ssd1306_spi.o \
@@ -22,8 +24,9 @@ OBJS += \
 ./Application/User/stm32f4xx_it.o 
 
 C_DEPS += \
+./Application/User/IRremote.d \
+./Application/User/cJSON.d \
 ./Application/User/font.d \
-./Application/User/jfes.d \
 ./Application/User/main.d \
 ./Application/User/sensors.d \
 ./Application/User/ssd1306_spi.d \

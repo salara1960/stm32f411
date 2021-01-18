@@ -13,19 +13,17 @@
 #define SET_OLED_SPI
 
 //#define SET_COMPAS_BLOCK
-
 //#define MIC_PRESENT
 
 #define SET_MPU
 //#define SET_MPU_INTERRUPT
 
-//#define SET_JSON
-#define SET_JFES
-#ifdef SET_JFES
-	#define JFES_DOUBLE_PRECISION 0.01//0.000000001
-	#define SET_CALLOC_MEM
-	//#define SET_MALLOC_MEM
+#define SET_cJSON
+#ifdef SET_cJSON
+	#define SET_LOW_PRECISION
+	#define SET_FLOAT_FORMAT "%1.2f"
 #endif
 
+#define SET_IRED
 
 #endif /* APPLICATION_USER_HDR_H_ */

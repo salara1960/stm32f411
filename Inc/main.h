@@ -46,7 +46,9 @@ extern "C" {
 #include "hdr.h"
 #include "sensors.h"
 #include "ssd1306.h"
-#include "jfes.h"
+#include "cJSON.h"
+#include "IRremote.h"
+
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -89,14 +91,13 @@ enum {
 	devADC = 8,
 	devTmr2 = 0x10,
 	devFifo = 0x20,
-	devMem = 0x40,
-	devJfes = 0x80
+	devMem = 0x40
 };
 
 enum {
 	textMode = 0,
-	jfesMode,
-	jsonMode
+	jsonMode,
+	cjsonMode
 };
 
 #ifndef bool
@@ -131,6 +132,65 @@ compas_data_t compData;
 	I2C_HandleTypeDef *portMPU;
 #endif
 
+#ifdef SET_IRED
+
+	#define MAX_IRED_KEY 21
+
+/*
+	#define KEY_CH_MINUS   0xe318261b
+	#define KEY_CH         0x00511dbb
+	#define KEY_CH_PLUS    0xee886d7f
+	#define KEY_LEFT       0x52a3d41f
+	#define KEY_RIGTH      0xd7e84b1b
+	#define KEY_START_STOP 0x20fe4dbb
+	#define KEY_MINUS      0xf076c13b
+	#define KEY_PLUS       0xa3c8eddb
+	#define KEY_ENTER      0xe5cfbd7f
+    #define KEY_100_PLUS   0x97483bfb
+	#define KEY_200_PLUS   0xf0c41643
+    #define KEY_0          0xc101e57b
+	#define KEY_1          0x9716be3f
+	#define KEY_2          0x3d9ae3f7
+	#define KEY_3          0x6182021b
+	#define KEY_4          0x8c22657b
+	#define KEY_5          0x488f3cbb
+	#define KEY_6          0x0449e79f
+	#define KEY_7          0x32c6fdf7
+	#define KEY_8          0x1bc0157b
+	#define KEY_9          0x3ec3fc1b
+*/
+
+	enum {
+		key_ch_minus = 0,
+		key_ch,
+		key_ch_plus,
+		key_left,
+		key_right,
+		key_sp,
+		key_minus,
+		key_plus,
+		key_eq,
+		key_100,
+		key_200,
+		key_0,
+		key_1,
+		key_2,
+		key_3,
+		key_4,
+		key_5,
+		key_6,
+		key_7,
+		key_8,
+		key_9
+	};
+
+	typedef struct {
+		char name[8];
+		uint32_t code;
+	} one_key_t;
+
+	TIM_HandleTypeDef htim4; // таймер для приёма
+#endif
 //extern evt_t evt_fifo[MAX_FIFO_SIZE];
 //extern uint8_t rd_evt_adr, wr_evt_adr;
 
@@ -173,6 +233,8 @@ void Error_Handler(void);
 #define iEXTI4_Pin GPIO_PIN_4
 #define iEXTI4_GPIO_Port GPIOA
 #define iEXTI4_EXTI_IRQn EXTI4_IRQn
+#define IRED_Pin GPIO_PIN_5
+#define IRED_GPIO_Port GPIOA
 #define OLED_DC_Pin GPIO_PIN_0
 #define OLED_DC_GPIO_Port GPIOB
 #define OLED_RST_Pin GPIO_PIN_1
@@ -203,6 +265,11 @@ void Error_Handler(void);
 	#define CS_OLED_SELECT() HAL_GPIO_WritePin(OLED_CS_GPIO_Port, OLED_CS_Pin, GPIO_PIN_RESET)
 	#define CS_OLED_DESELECT() HAL_GPIO_WritePin(OLED_CS_GPIO_Port, OLED_CS_Pin, GPIO_PIN_SET)
 #endif
+
+//#ifdef SET_IRED
+//	#define RECIV_PIN (HAL_GPIO_ReadPin(IRED_GPIO_Port, IRED_Pin)) // пин для приёма recive_IR
+//#endif
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
