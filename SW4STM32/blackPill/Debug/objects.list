@@ -8,6 +8,8 @@
 "Application/User/ssd1306_spi.o"
 "Application/User/stm32f4xx_hal_msp.o"
 "Application/User/stm32f4xx_it.o"
+"Application/User/ST7789/fonts.o"
+"Application/User/ST7789/st7789.o"
 "Drivers/CMSIS/system_stm32f4xx.o"
 "Drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal.o"
 "Drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_adc.o"

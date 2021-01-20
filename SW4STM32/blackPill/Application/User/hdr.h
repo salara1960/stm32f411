@@ -10,7 +10,8 @@
 
 #define SET_BMx280
 
-#define SET_OLED_SPI
+//#define SET_OLED_SPI
+#define SET_IPS
 
 //#define SET_COMPAS_BLOCK
 //#define MIC_PRESENT

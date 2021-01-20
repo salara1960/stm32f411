@@ -10,6 +10,7 @@ RM := rm -rf
 -include sources.mk
 -include Drivers/STM32F4xx_HAL_Driver/subdir.mk
 -include Drivers/CMSIS/subdir.mk
+-include Application/User/ST7789/subdir.mk
 -include Application/User/subdir.mk
 -include Application/SW4STM32/subdir.mk
 -include subdir.mk
@@ -48,8 +49,7 @@ clean:
 post-build:
 	-@echo 'Generating hex and Printing size information:'
 	arm-none-eabi-objcopy -O ihex "blackPill.elf" "blackPill.hex"
-	arm-none-eabi-objcopy -O binary "blackPill.elf" "blackPill.bin"
-	ls -la | grep "blackPill.*"
+	arm-none-eabi-size "blackPill.elf"
 	-@echo ' '
 
 .PHONY: all clean dependents

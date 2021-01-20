@@ -41,7 +41,7 @@
 /* USER CODE BEGIN PTD */
 
 #define MAX_TMP_SIZE  256
-#define MAX_FIFO_SIZE  32
+#define MAX_FIFO_SIZE  64//32
 #define MAX_UART_BUF 1024//512
 #define MAX_VCC_BUF     8
 #define MAX_COMP_BUF    8
@@ -113,7 +113,11 @@ DMA_HandleTypeDef hdma_usart1_tx;
 
 /* USER CODE BEGIN PV */
 
-const char gradus = 0x1f;
+#ifdef SET_OLED_SPI
+	const char gradus = 0x1f;
+#else
+	const char gradus = '^';
+#endif
 const char *cr_lf = "\r\n";
 
 static evt_t evt_fifo[MAX_FIFO_SIZE] = {msg_empty};
@@ -149,14 +153,18 @@ uint8_t outMode = cjsonMode;
 uint8_t outDebug = 0;
 
 //
-#ifdef SET_OLED_SPI
+#if defined(SET_OLED_SPI) || defined(SET_IPS)
 	SPI_HandleTypeDef *portOLED = NULL;
 	char line[MAX_TMP_SIZE] = {0};
 	uint32_t spi_cnt;
 	char devName[32] = {0};//" - STM32F411 -  ";
-	uint8_t shiftLine = 8;
-	uint8_t shiftStart = OLED_CMD_SHIFT_START; // activate shift
 	uint32_t tmr_shift = 0;
+
+	#ifdef SET_OLED_SPI
+		uint8_t shiftLine = 8;
+		uint8_t shiftStart = OLED_CMD_SHIFT_START; // activate shift
+	#endif
+
 #endif
 
 #ifdef SET_BMx280
@@ -863,11 +871,11 @@ int main(void)
 
 
 
-    sprintf(devName, "- Speed:%lu -", huart1.Init.BaudRate);
+    sprintf(devName, "Speed:%lu", huart1.Init.BaudRate);
 
-  	// start timer1 + interrupt
+  	/* start timer1 + interrupt
 	HAL_TIM_Base_Start(&htim2);
-	HAL_TIM_Base_Start_IT(&htim2);
+	HAL_TIM_Base_Start_IT(&htim2);*/
     //"start" rx_interrupt
 	HAL_UART_Receive_IT(&huart1, (uint8_t *)&rxByte, 1);
 	//"start" ADC interrupt
@@ -883,15 +891,9 @@ int main(void)
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
 
-#ifdef SET_IRED
-	int8_t len8 = 0;
-	uint32_t tmr_ired = 0;
-	char trans_str[16] = {0};
-	enIntIRED();
-#endif
 
-#ifdef SET_OLED_SPI
-    portOLED = &hspi4;
+	portOLED = &hspi4;
+#if defined(SET_OLED_SPI)
     spi_ssd1306_Reset();
     //spi_ssd1306_on(1);//screen ON
     spi_ssd1306_init();//screen INIT
@@ -899,12 +901,30 @@ int main(void)
     //spi_ssd1306_invert();
     spi_ssd1306_clear();//clear screen
 
+    int8_t len8 = 0;
     shiftLine = 8;
     shiftStart = OLED_CMD_SHIFT_STOP;//ART; // activate shift
 //    spi_ssd1306_text_xy(devName, 1, shiftLine);
     //putMsg(msg_shiftEvent);
 
     //uint8_t sfst = 1;
+#elif defined(SET_IPS)
+    HAL_Delay(10);
+    ST7789_Reset();
+    HAL_Delay(150);
+    ST7789_Init();
+
+    FontDef fntKey = Font_16x26;
+    FontDef tFont = Font_11x18;
+    //tFont.height
+
+    //ST7789_DrawRectangle(10, 10, 10, 50, RED);
+//    ST7789_WriteString(0, 0, devName, Font_11x18, RED, WHITE);
+    //ST7789_Test();
+
+    ST7789_Fill(0, 0, ST7789_WIDTH - 1, fntKey.height, WHITE);
+    ST7789_Fill(0, ST7789_WIDTH - fntKey.height, ST7789_WIDTH - 1, ST7789_HEIGHT - 1, YELLOW);
+
 #endif
 
 
@@ -933,6 +953,21 @@ int main(void)
     	}
     }
 #endif
+
+
+#ifdef SET_IRED
+	uint32_t tmr_ired = 0;
+	enIntIRED();
+#endif
+
+
+    //---------------------------------------
+    //
+    // start timer1 + interrupt
+    HAL_TIM_Base_Start(&htim2);
+    HAL_TIM_Base_Start_IT(&htim2);
+    //
+    //---------------------------------------
 
 	portHMC = &hi2c1;
 	xyz = (xyz_t *)&magBuf[0];
@@ -965,18 +1000,26 @@ int main(void)
 		if (!tmr_ired) {
 			if (decodeIRED(&results)) {
 				tmr_ired = getTimer(_300ms);
-				int8_t kid = -1, k;
+				int8_t kid = -1;
 				for (int8_t i = 0; i < MAX_IRED_KEY; i++) {
 					if (results.value == keyAll[i].code) {
 						kid = i;
 						break;
 					}
 				}
-				if (kid == -1) k = sprintf(trans_str, " CODE:%08lX ", results.value);
-				          else k = sprintf(trans_str, " irKEY: %s ", keyAll[kid].name);
+				int8_t k, l, n;
+#if defined(SET_OLED_SPI)
+				if (kid == -1) k = sprintf(line, " CODE:%08lX ", results.value);
+				          else k = sprintf(line, " irKEY: %s ", keyAll[kid].name);
 				if (k < len8) spi_ssd1306_clear_line(8);
 				len8 = k;
-				spi_ssd1306_text_xy(trans_str, 1, 8);
+				spi_ssd1306_text_xy(line, 1, 8);
+#elif defined(SET_IPS)
+				if (kid == -1) k = sprintf(line, "CODE:%08lX", results.value);
+				          else k = sprintf(line, "irKEY: %s", keyAll[kid].name);
+				//ST7789_Fill(0, ST7789_WIDTH - fntKey.height, ST7789_WIDTH - 1, ST7789_HEIGHT - 1, YELLOW);
+				ST7789_WriteString(0, ST7789_WIDTH - fntKey.height, mkLineCenter(line, ST7789_WIDTH / fntKey.width), fntKey, MAGENTA, YELLOW);
+#endif
 				if (kid != -1) {
 					switch (kid) {
 						case key_100: jtune = 1; break;
@@ -1062,9 +1105,9 @@ int main(void)
 		    case msg_sec:
 		    	led_OnOff();
 		    	//
-#ifdef SET_OLED_SPI
 		    	sec_to_str_time(line);
-#ifdef SET_MPU
+#if defined(SET_OLED_SPI)
+	#ifdef SET_MPU
 		    	if (!devError) sprintf(line+strlen(line), "\n  VCC:%.3fv", VccF);
 		    	          else sprintf(line+strlen(line), "\n devError:0x%02X", devError);
 		    	if (mpuPresent) {
@@ -1072,13 +1115,13 @@ int main(void)
 		    	} else {
 		    		sprintf(line+strlen(line), "\n mpuTemp: ---\n");
 		    	}
-#else
+	#else
 		    	sprintf(line+strlen(line), "\n  VCC:%.3fv\n devError:0x%02X\n", Vcc, devError);
-#endif
-#ifdef SET_BMx280
+	#endif
+	#ifdef SET_BMx280
 		    	sprintf(line+strlen(line), "  pres:%.2fmm\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
 		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
-#endif
+	#endif
 		    	sprintf(line+strlen(line), " azimut:%.2f%c\n", compData.angleHMC, gradus);
 		    	/*if (sfst) {
 		    		sfst = 0;
@@ -1086,6 +1129,32 @@ int main(void)
 		    		putMsg(msg_shiftEvent);
 		    	}*/
 		    	spi_ssd1306_text_xy(line, 2, 1);
+#elif defined(SET_IPS)
+		    	//
+		    	//ST7789_Fill(0, 0, ST7789_WIDTH - 1, fntKey.height, WHITE);
+		    	ST7789_WriteString(0, 0, mkLineCenter(line, ST7789_WIDTH / fntKey.width), fntKey, RED, WHITE);
+		    	//
+		    	line[0] = '\0';
+	#ifdef SET_MPU
+		    	if (!devError) sprintf(line+strlen(line), "\n    Vcc:%.3fv\n", VccF);
+		    	          else sprintf(line+strlen(line), "\n devError:0x%02X\n", devError);
+		    	if (mpuPresent) {
+		    		sprintf(line+strlen(line), "   mpuTemp:%.2f^\n", mpu_data.TEMP);
+		    		sprintf(line+strlen(line), "   mpuAccel:%d,%d,%d\n", mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL);
+		    		sprintf(line+strlen(line), "   mpuGyro:%d,%d,%d\n", mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
+		    	} else {
+		    		sprintf(line+strlen(line), "   mpuTemp: ---\n");
+		    	}
+	#else
+		    	sprintf(line+strlen(line), "VCC:%.3fv\n devError:0x%02X\n", Vcc, devError);
+	#endif
+	#ifdef SET_BMx280
+		    	sprintf(line+strlen(line), "   pres:%.2fmm\n   temp:%.2f^\n", sensors.bmx_pres, sensors.bmx_temp);
+		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "   humi:%.2f%%\n", sensors.bmx_humi);
+	#endif
+		    	sprintf(line+strlen(line), "   azimut:%.2f^\n   temp2:%.2f^\n", compData.angleHMC, compData.tempHMC);
+
+		    	ST7789_WriteString(0, tFont.height, line, tFont, WHITE, BLACK);
 #endif
 		    break;
 			case msg_rxDone:
@@ -1129,11 +1198,14 @@ int main(void)
 				} else if ((uk = strstr(stx, "period=")) != NULL) {//key_minus : -100ms, key_plus : +100ms
 					int val = atoi(uk + 7);
 					if ((val > 0) && (val <= 30000)) cikl_out = val;
-				} else if (strstr(stx, "shift") != NULL) {
+				}
+#ifdef SET_OLED_SPI
+				else if (strstr(stx, "shift") != NULL) {
 					if (shiftStart == OLED_CMD_SHIFT_STOP) shiftStart = OLED_CMD_SHIFT_START;
 					                                  else shiftStart = OLED_CMD_SHIFT_STOP;
 					putMsg(msg_shiftEvent);
 				}
+#endif
 			break;
 			case msg_rst:
 				HAL_Delay(800);

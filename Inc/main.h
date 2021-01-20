@@ -48,6 +48,7 @@ extern "C" {
 #include "ssd1306.h"
 #include "cJSON.h"
 #include "IRremote.h"
+#include "st7789.h"
 
 /* USER CODE END Includes */
 
@@ -120,7 +121,7 @@ volatile uint8_t devError;
 I2C_HandleTypeDef *portHMC;
 compas_data_t compData;
 
-#ifdef SET_OLED_SPI
+#if defined(SET_OLED_SPI) || defined(SET_IPS)
 	SPI_HandleTypeDef *portOLED;
 #endif
 #ifdef SET_BMx280
