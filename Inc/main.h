@@ -213,6 +213,8 @@ enum {
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -221,11 +223,11 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define irLED_Pin GPIO_PIN_13
+#define irLED_GPIO_Port GPIOC
 #define iKEY_Pin GPIO_PIN_0
 #define iKEY_GPIO_Port GPIOA
 #define iKEY_EXTI_IRQn EXTI0_IRQn
-#define OLED_MOSI_Pin GPIO_PIN_1
-#define OLED_MOSI_GPIO_Port GPIOA
 #define iADC_Pin GPIO_PIN_2
 #define iADC_GPIO_Port GPIOA
 #define MIC_DIG_Pin GPIO_PIN_3
@@ -236,14 +238,18 @@ void Error_Handler(void);
 #define iEXTI4_EXTI_IRQn EXTI4_IRQn
 #define IRED_Pin GPIO_PIN_5
 #define IRED_GPIO_Port GPIOA
+#define PWM_Pin GPIO_PIN_6
+#define PWM_GPIO_Port GPIOA
 #define OLED_DC_Pin GPIO_PIN_0
 #define OLED_DC_GPIO_Port GPIOB
 #define OLED_RST_Pin GPIO_PIN_1
 #define OLED_RST_GPIO_Port GPIOB
 #define OLED_CS_Pin GPIO_PIN_2
 #define OLED_CS_GPIO_Port GPIOB
-#define OLED_SCK_Pin GPIO_PIN_13
+#define OLED_SCK_Pin GPIO_PIN_10
 #define OLED_SCK_GPIO_Port GPIOB
+#define OLED_MOSI_Pin GPIO_PIN_15
+#define OLED_MOSI_GPIO_Port GPIOB
 #define tLED_Pin GPIO_PIN_5
 #define tLED_GPIO_Port GPIOB
 #define ERR_LED_Pin GPIO_PIN_8
@@ -252,7 +258,7 @@ void Error_Handler(void);
 #define STROB_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
-
+#define IRRED_LED() HAL_GPIO_TogglePin(irLED_GPIO_Port, irLED_Pin);
 
 #define STROB_UP()   HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_SET);
 #define STROB_DOWN() HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_RESET);

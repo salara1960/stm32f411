@@ -24,7 +24,6 @@
 //arm-none-eabi-objcopy -O ihex "${BuildArtifactFileBaseName}.elf" "${BuildArtifactFileBaseName}.hex" && arm-none-eabi-objcopy -O binary "${BuildArtifactFileBaseName}.elf" "${BuildArtifactFileBaseName}.bin" && ls -la | grep "${BuildArtifactFileBaseName}.*"
 
 /* USER CODE END Header */
-
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
@@ -102,10 +101,14 @@ DMA_HandleTypeDef hdma_i2c1_tx;
 
 RTC_HandleTypeDef hrtc;
 
+SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi4;
+DMA_HandleTypeDef hdma_spi2_tx;
+DMA_HandleTypeDef hdma_spi4_rx;
 DMA_HandleTypeDef hdma_spi4_tx;
 
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart1;
@@ -256,6 +259,8 @@ static void MX_I2C1_Init(void);
 static void MX_SPI4_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -373,6 +378,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			putMsg(msg_sec);
 		}
 		//
+	} else if (htim->Instance == TIM3) {
+		//PWM pinA5
 	}
 #ifdef SET_IRED
 	else if (htim->Instance == TIM4) {
@@ -503,7 +510,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 #ifdef SET_OLED_SPI
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
-	if (hspi->Instance == SPI4) {
+	if (hspi->Instance == SPI2) {
 		if (withDMA) {
 			CS_OLED_DESELECT();
 			spiRdy = 1;
@@ -514,7 +521,7 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 //-----------------------------------------------------------------------------
 void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 {
-	if (hspi->Instance == SPI4) devError |= devSPI;
+	if (hspi->Instance == SPI2) devError |= devSPI;
 }
 #endif
 //-----------------------------------------------------------------------------
@@ -839,7 +846,6 @@ int main(void)
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
-  
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -867,6 +873,8 @@ int main(void)
   MX_SPI4_Init();
   MX_ADC1_Init();
   MX_TIM4_Init();
+  MX_TIM3_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
 
 
@@ -892,7 +900,7 @@ int main(void)
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
 
 
-	portOLED = &hspi4;
+	portOLED = &hspi2;
 #if defined(SET_OLED_SPI)
     spi_ssd1306_Reset();
     //spi_ssd1306_on(1);//screen ON
@@ -909,9 +917,15 @@ int main(void)
 
     //uint8_t sfst = 1;
 #elif defined(SET_IPS)
-    HAL_Delay(10);
+    /*
+    HAL_TIM_PWM_Init(&htim3);
+    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+    //HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_1);
+    //    HAL_TIM_PWM_Stop_IT(&htim3, TIM_CHANNEL_1);
+    */
+
     ST7789_Reset();
-    HAL_Delay(150);
     ST7789_Init();
 
     FontDef fntKey = Font_16x26;
@@ -956,6 +970,7 @@ int main(void)
 
 
 #ifdef SET_IRED
+    HAL_GPIO_WritePin(irLED_GPIO_Port, irLED_Pin, GPIO_PIN_SET);
 	uint32_t tmr_ired = 0;
 	enIntIRED();
 #endif
@@ -1000,6 +1015,7 @@ int main(void)
 		if (!tmr_ired) {
 			if (decodeIRED(&results)) {
 				tmr_ired = getTimer(_300ms);
+				IRRED_LED();
 				int8_t kid = -1;
 				for (int8_t i = 0; i < MAX_IRED_KEY; i++) {
 					if (results.value == keyAll[i].code) {
@@ -1007,16 +1023,16 @@ int main(void)
 						break;
 					}
 				}
-				int8_t k, l, n;
 #if defined(SET_OLED_SPI)
+				int8_t k;
 				if (kid == -1) k = sprintf(line, " CODE:%08lX ", results.value);
 				          else k = sprintf(line, " irKEY: %s ", keyAll[kid].name);
 				if (k < len8) spi_ssd1306_clear_line(8);
 				len8 = k;
 				spi_ssd1306_text_xy(line, 1, 8);
 #elif defined(SET_IPS)
-				if (kid == -1) k = sprintf(line, "CODE:%08lX", results.value);
-				          else k = sprintf(line, "irKEY: %s", keyAll[kid].name);
+				if (kid == -1) sprintf(line, "CODE:%08lX", results.value);
+				          else sprintf(line, "irKEY: %s", keyAll[kid].name);
 				//ST7789_Fill(0, ST7789_WIDTH - fntKey.height, ST7789_WIDTH - 1, ST7789_HEIGHT - 1, YELLOW);
 				ST7789_WriteString(0, ST7789_WIDTH - fntKey.height, mkLineCenter(line, ST7789_WIDTH / fntKey.width), fntKey, MAGENTA, YELLOW);
 #endif
@@ -1051,6 +1067,7 @@ int main(void)
 			if (chkTimer(tmr_ired)) {
 				tmr_ired = 0;
 				resumeIRED();
+				IRRED_LED();
 			}
 		}
 #endif
@@ -1468,11 +1485,12 @@ void SystemClock_Config(void)
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
 
-  /** Configure the main internal regulator output voltage 
+  /** Configure the main internal regulator output voltage
   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
@@ -1487,7 +1505,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
@@ -1525,7 +1543,7 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 1 */
 
   /* USER CODE END ADC1_Init 1 */
-  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion) 
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV8;
@@ -1543,7 +1561,7 @@ static void MX_ADC1_Init(void)
   {
     Error_Handler();
   }
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time. 
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
   */
   sConfig.Channel = ADC_CHANNEL_2;
   sConfig.Rank = 1;
@@ -1610,7 +1628,7 @@ static void MX_RTC_Init(void)
   /* USER CODE BEGIN RTC_Init 1 */
 
   /* USER CODE END RTC_Init 1 */
-  /** Initialize RTC Only 
+  /** Initialize RTC Only
   */
   hrtc.Instance = RTC;
   hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
@@ -1628,7 +1646,7 @@ static void MX_RTC_Init(void)
     
   /* USER CODE END Check_RTC_BKUP */
 
-  /** Initialize RTC and set the Time and Date 
+  /** Initialize RTC and set the Time and Date
   */
   sTime.Hours = 0;
   sTime.Minutes = 0;
@@ -1655,6 +1673,48 @@ static void MX_RTC_Init(void)
 }
 
 /**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+	// for 50 MHz clock : for OLED/IPS display
+		// _2 - 25MHz
+		// _4 - 12.5MHz
+		// hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8; - 6.25 Mbits/s
+		// _16 - 3.125MHz
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
   * @brief SPI4 Initialization Function
   * @param None
   * @retval None
@@ -1667,7 +1727,7 @@ static void MX_SPI4_Init(void)
   /* USER CODE END SPI4_Init 0 */
 
   /* USER CODE BEGIN SPI4_Init 1 */
-	// for 100 MHz clock :
+	// for 100 MHz clock : for W5500 internet port
 	// _2 - 50MHz
 	// _4 - 25MHz
 	// _8 - 12.5MHz
@@ -1760,6 +1820,65 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 999;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65535;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 99;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
   * @brief TIM4 Initialization Function
   * @param None
   * @retval None
@@ -1837,10 +1956,10 @@ static void MX_USART1_UART_Init(void)
 
 }
 
-/** 
+/**
   * Enable DMA controller clock
   */
-static void MX_DMA_Init(void) 
+static void MX_DMA_Init(void)
 {
 
   /* DMA controller clock enable */
@@ -1854,6 +1973,12 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 4, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+  /* DMA1_Stream4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
+  /* DMA2_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
   /* DMA2_Stream1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
@@ -1879,10 +2004,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(irLED_GPIO_Port, irLED_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|STROB_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, tLED_Pin|ERR_LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : irLED_Pin */
+  GPIO_InitStruct.Pin = irLED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(irLED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : iKEY_Pin */
   GPIO_InitStruct.Pin = iKEY_Pin;
@@ -1908,9 +2043,9 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(IRED_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : OLED_DC_Pin OLED_RST_Pin OLED_CS_Pin ERR_LED_Pin 
+  /*Configure GPIO pins : OLED_DC_Pin OLED_RST_Pin OLED_CS_Pin ERR_LED_Pin
                            STROB_Pin */
-  GPIO_InitStruct.Pin = OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|ERR_LED_Pin 
+  GPIO_InitStruct.Pin = OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|ERR_LED_Pin
                           |STROB_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
@@ -1961,7 +2096,7 @@ void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
-{ 
+{
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */

@@ -66,7 +66,8 @@ HAL_StatusTypeDef rt = HAL_OK;
 		buff_size -= chunk_size;
 	}
 
-	//rt |= HAL_SPI_Transmit(portOLED, buff, buff_size, waits * 10);
+	//rt |= HAL_SPI_Transmit_DMA(portOLED, buff, buff_size);
+
 
 	ST7789_UnSelect();
 
@@ -200,13 +201,13 @@ void ST7789_Init()
 		ST7789_WriteData(data, sizeof(data));
 	}
 
-	ST7789_WriteCommand(ST7789_INVON);		//	Inversion ON
+	/*ST7789_WriteCommand(ST7789_INVON);		//	Inversion ON
 	ST7789_WriteCommand(ST7789_SLPOUT);	//	Out of sleep mode
   	ST7789_WriteCommand(ST7789_NORON);		//	Normal Display on
-  	ST7789_WriteCommand(ST7789_DISPON);	//	Main screen turned on
+  	ST7789_WriteCommand(ST7789_DISPON);	//	Main screen turned on*/
 
-  	//uint8_t cmds[] = {ST7789_INVON, ST7789_SLPOUT, ST7789_NORON, ST7789_DISPON};
-  	//ST7789_WriteCommands(cmds, sizeof(cmds));
+  	uint8_t cmds[] = {ST7789_INVON, ST7789_SLPOUT, ST7789_NORON, ST7789_DISPON};
+  	ST7789_WriteCommands(cmds, sizeof(cmds));
 
 	HAL_Delay(2);//50
 
@@ -459,19 +460,21 @@ void ST7789_WriteChar(uint16_t x, uint16_t y, char ch, FontDef font, uint16_t co
 	uint8_t bdata[] = {bgcolor >> 8, bgcolor & 0xFF};
 	uint8_t *uk = NULL;
 
+//ST7789_DC_Set();
+
 	for (i = 0; i < font.height; i++) {
 		b = font.data[(ch - 32) * font.height + i];
 		for (j = 0; j < font.width; j++) {
 			if ((b << j) & 0x8000) {
 				uk = cdata;
-				//uint8_t cdata[] = {color >> 8, color & 0xFF};
-				//ST7789_WriteData(cdata, sizeof(cdata));
 			} else {
 				uk = bdata;
-				//uint8_t bdata[] = {bgcolor >> 8, bgcolor & 0xFF};
-				//ST7789_WriteData(bdata, sizeof(bdata));
 			}
 			ST7789_WriteData(uk, sizeof(cdata));
+			/*HAL_SPI_Transmit_DMA(portOLED, uk, sizeof(cdata));
+			while (HAL_SPI_GetState(portOLED) != HAL_SPI_STATE_READY) {
+				if (HAL_SPI_GetState(portOLED) == HAL_SPI_STATE_BUSY_TX) break;
+			}*/
 		}
 	}
 	ST7789_UnSelect();
@@ -488,9 +491,9 @@ void ST7789_WriteChar(uint16_t x, uint16_t y, char ch, FontDef font, uint16_t co
  */
 void ST7789_WriteString(uint16_t x, uint16_t y, const char *str, FontDef font, uint16_t color, uint16_t bgcolor)
 {
-	ST7789_Select();
-	char cha = '\0';
+	if (!str) return;
 
+	ST7789_Select();
 	while (*str) {
 		if (x + font.width >= ST7789_WIDTH) {
 			x = 0;

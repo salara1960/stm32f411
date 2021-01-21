@@ -49,8 +49,7 @@ clean:
 post-build:
 	-@echo 'Generating hex and Printing size information:'
 	arm-none-eabi-objcopy -O ihex "blackPill.elf" "blackPill.hex"
-	arm-none-eabi-objcopy -O binary "blackPill.elf" "blackPill.bin"
-	ls -la | grep "blackPill.*"
+	arm-none-eabi-size "blackPill.elf"
 	-@echo ' '
 
 .PHONY: all clean dependents
