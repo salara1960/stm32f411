@@ -49,6 +49,9 @@ extern "C" {
 #include "cJSON.h"
 #include "IRremote.h"
 #include "st7789.h"
+#ifdef SET_NET
+	#include "socket.h"
+#endif
 
 /* USER CODE END Includes */
 
@@ -92,7 +95,8 @@ enum {
 	devADC = 8,
 	devTmr2 = 0x10,
 	devFifo = 0x20,
-	devMem = 0x40
+	devMem = 0x40,
+	devNet = 0x80
 };
 
 enum {
@@ -137,30 +141,6 @@ compas_data_t compData;
 
 	#define MAX_IRED_KEY 21
 
-/*
-	#define KEY_CH_MINUS   0xe318261b
-	#define KEY_CH         0x00511dbb
-	#define KEY_CH_PLUS    0xee886d7f
-	#define KEY_LEFT       0x52a3d41f
-	#define KEY_RIGTH      0xd7e84b1b
-	#define KEY_START_STOP 0x20fe4dbb
-	#define KEY_MINUS      0xf076c13b
-	#define KEY_PLUS       0xa3c8eddb
-	#define KEY_ENTER      0xe5cfbd7f
-    #define KEY_100_PLUS   0x97483bfb
-	#define KEY_200_PLUS   0xf0c41643
-    #define KEY_0          0xc101e57b
-	#define KEY_1          0x9716be3f
-	#define KEY_2          0x3d9ae3f7
-	#define KEY_3          0x6182021b
-	#define KEY_4          0x8c22657b
-	#define KEY_5          0x488f3cbb
-	#define KEY_6          0x0449e79f
-	#define KEY_7          0x32c6fdf7
-	#define KEY_8          0x1bc0157b
-	#define KEY_9          0x3ec3fc1b
-*/
-
 	enum {
 		key_ch_minus = 0,
 		key_ch,
@@ -195,6 +175,10 @@ compas_data_t compData;
 //extern evt_t evt_fifo[MAX_FIFO_SIZE];
 //extern uint8_t rd_evt_adr, wr_evt_adr;
 
+#ifdef SET_NET
+	SPI_HandleTypeDef *portNET;
+#endif
+
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -228,6 +212,8 @@ void Error_Handler(void);
 #define iKEY_Pin GPIO_PIN_0
 #define iKEY_GPIO_Port GPIOA
 #define iKEY_EXTI_IRQn EXTI0_IRQn
+#define NET_MOSI_Pin GPIO_PIN_1
+#define NET_MOSI_GPIO_Port GPIOA
 #define iADC_Pin GPIO_PIN_2
 #define iADC_GPIO_Port GPIOA
 #define MIC_DIG_Pin GPIO_PIN_3
@@ -248,8 +234,19 @@ void Error_Handler(void);
 #define OLED_CS_GPIO_Port GPIOB
 #define OLED_SCK_Pin GPIO_PIN_10
 #define OLED_SCK_GPIO_Port GPIOB
+#define NET_CS_Pin GPIO_PIN_12
+#define NET_CS_GPIO_Port GPIOB
+#define NET_SCK_Pin GPIO_PIN_13
+#define NET_SCK_GPIO_Port GPIOB
+#define NET_RST_Pin GPIO_PIN_14
+#define NET_RST_GPIO_Port GPIOB
 #define OLED_MOSI_Pin GPIO_PIN_15
 #define OLED_MOSI_GPIO_Port GPIOB
+#define NET_EXTI8_Pin GPIO_PIN_8
+#define NET_EXTI8_GPIO_Port GPIOA
+#define NET_EXTI8_EXTI_IRQn EXTI9_5_IRQn
+#define NET_MISO_Pin GPIO_PIN_11
+#define NET_MISO_GPIO_Port GPIOA
 #define tLED_Pin GPIO_PIN_5
 #define tLED_GPIO_Port GPIOB
 #define ERR_LED_Pin GPIO_PIN_8
@@ -273,9 +270,13 @@ void Error_Handler(void);
 	#define CS_OLED_DESELECT() HAL_GPIO_WritePin(OLED_CS_GPIO_Port, OLED_CS_Pin, GPIO_PIN_SET)
 #endif
 
-//#ifdef SET_IRED
-//	#define RECIV_PIN (HAL_GPIO_ReadPin(IRED_GPIO_Port, IRED_Pin)) // пин для приёма recive_IR
-//#endif
+
+
+#ifdef SET_NET
+	#define CS_NET_SELECT() HAL_GPIO_WritePin(NET_CS_GPIO_Port, NET_CS_Pin, GPIO_PIN_RESET)
+	#define CS_NET_DESELECT() HAL_GPIO_WritePin(NET_CS_GPIO_Port, NET_CS_Pin, GPIO_PIN_SET)
+#endif
+
 
 /* USER CODE END Private defines */
 

@@ -246,6 +246,72 @@ struct mallinfo mem_info;// = mallinfo();
 #endif
 
 
+#ifdef SET_NET
+	//#define HTTP_SOCKET     0
+	//#define PORT_TCPS		9000
+	//#define DATA_BUF_SIZE   2048
+
+	//uint8_t gDATABUF[DATA_BUF_SIZE];
+
+	char localIP[32] = {0};
+	char netChipID[16] = {0};
+	int tcpSOC = 0;
+
+	volatile uint32_t net_cnt = 0;
+
+	wiz_NetInfo gWIZNETINFO = {.mac = {0x00, 0x08, 0xdc, 0x47, 0x47, 0x54},
+	                           .ip = {192, 168, 0, 150},
+	                           .sn = {255, 255, 255, 0},
+	                           .gw = {192, 168, 0, 1},
+	                           .dns = {0, 0, 0, 0},
+	                           .dhcp = NETINFO_STATIC};
+	//--------------------------------------------------------------------------
+	void W5500_Reset()
+	{
+		HAL_GPIO_WritePin(NET_RST_GPIO_Port, NET_RST_Pin, GPIO_PIN_RESET);
+		HAL_Delay(1);
+		HAL_GPIO_WritePin(NET_RST_GPIO_Port, NET_RST_Pin, GPIO_PIN_SET);
+		HAL_Delay(250);
+	}
+	//--------------------------------------------------------------------------
+	void W5500_Select() { CS_NET_SELECT(); }
+	void W5500_Unselect() { CS_NET_DESELECT(); }
+	//--------------------------------------------------------------------------
+	void W5500_ReadBuff(uint8_t* buff, uint16_t len)
+	{
+	    if (HAL_SPI_Receive(&hspi4, buff, len, HAL_MAX_DELAY) != HAL_OK) devError |= devNet;
+	}
+	//--------------------------------------------------------------------------
+	void W5500_WriteBuff(uint8_t* buff, uint16_t len)
+	{
+	    if (HAL_SPI_Transmit(&hspi4, buff, len, HAL_MAX_DELAY) != HAL_OK) devError |= devNet;
+	}
+	//--------------------------------------------------------------------------
+	uint8_t W5500_ReadByte()
+	{
+	    uint8_t byte;
+	    if (HAL_SPI_Receive(&hspi4, &byte, sizeof(uint8_t), HAL_MAX_DELAY) != HAL_OK) devError |= devNet;
+	    return byte;
+	}
+	//--------------------------------------------------------------------------
+	void W5500_WriteByte(uint8_t byte)
+	{
+		if (HAL_SPI_Transmit(&hspi4, &byte, sizeof(uint8_t), HAL_MAX_DELAY) != HAL_OK) devError |= devNet;
+	}
+	//--------------------------------------------------------------------------
+	void network_init(void)
+	{
+		ctlnetwork(CN_SET_NETINFO, (void *)&gWIZNETINFO);
+		ctlnetwork(CN_GET_NETINFO, (void *)&gWIZNETINFO);
+
+		sprintf(localIP, "%d.%d.%d.%d", gWIZNETINFO.ip[0], gWIZNETINFO.ip[1], gWIZNETINFO.ip[2], gWIZNETINFO.ip[3]);
+		memset(netChipID, 0, sizeof(netChipID));
+
+		ctlwizchip(CW_GET_ID, (void *)&netChipID[0]);
+	}
+	//--------------------------------------------------------------------------
+#endif
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -469,6 +535,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 #ifdef SET_MPU
 	else if (GPIO_Pin == iEXTI4_Pin) {
 		putMsg(msg_iMPU);
+	}
+#endif
+#ifdef SET_NET
+	else if (GPIO_Pin == NET_EXTI8_Pin) {
+		net_cnt++;
 	}
 #endif
 #ifdef MIC_PRESENT
@@ -976,6 +1047,39 @@ int main(void)
 #endif
 
 
+#ifdef SET_NET
+	//SPI_HandleTypeDef *portNET = &hspi4;
+	//reset device
+	W5500_Reset();
+	//register functions
+	reg_wizchip_cs_cbfunc(W5500_Select, W5500_Unselect);
+	reg_wizchip_spi_cbfunc(W5500_ReadByte, W5500_WriteByte);
+	reg_wizchip_spiburst_cbfunc(W5500_ReadBuff, W5500_WriteBuff);
+
+	uint8_t tx_buff_sizes[] = {2, 2, 2, 2, 2, 2, 2, 2};
+	uint8_t rx_buff_sizes[] = {2, 2, 2, 2, 2, 2, 2, 2};
+
+	if (wizchip_init(tx_buff_sizes, rx_buff_sizes) != 0) {
+		devError |= devNet;
+	} else {
+		network_init();
+	}
+
+	/*int stat = socket(tcpSOC, Sn_MR_TCP, 9192, SF_TCP_NODELAY);
+	if(stat != 0) devError |= devNet;
+	else {
+		uint8_t addr[] = {0xc0, 0xa8, 0x00, 0x65};
+		if (connect(tcpSOC, addr, 9192) != SOCK_OK) devError |= devNet;
+		else {
+			sprintf(line, "Message from : dev %s ip %s\r\n", netChipID, localIP);
+			send(tcpSOC, (uint8_t *)line, strlen(line));
+			disconnect(tcpSOC);
+		}
+		close(tcpSOC);
+	}*/
+#endif
+
+
     //---------------------------------------
     //
     // start timer1 + interrupt
@@ -1153,8 +1257,8 @@ int main(void)
 		    	//
 		    	line[0] = '\0';
 	#ifdef SET_MPU
-		    	if (!devError) sprintf(line+strlen(line), "\n    Vcc:%.3fv\n", VccF);
-		    	          else sprintf(line+strlen(line), "\n devError:0x%02X\n", devError);
+		    	if (!devError) sprintf(line+strlen(line), "    Vcc:%.3fv\n", VccF);
+		    	          else sprintf(line+strlen(line), " devError:0x%02X\n", devError);
 		    	if (mpuPresent) {
 		    		sprintf(line+strlen(line), "   mpuTemp:%.2f^\n", mpu_data.TEMP);
 		    		sprintf(line+strlen(line), "   mpuAccel:%d,%d,%d\n", mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL);
@@ -1170,8 +1274,15 @@ int main(void)
 		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "   humi:%.2f%%\n", sensors.bmx_humi);
 	#endif
 		    	sprintf(line+strlen(line), "   azimut:%.2f^\n   temp2:%.2f^\n", compData.angleHMC, compData.tempHMC);
-
-		    	ST7789_WriteString(0, tFont.height, line, tFont, WHITE, BLACK);
+	#ifdef SET_NET
+		    	sprintf(line+strlen(line), "%s / %lu", localIP, net_cnt);
+	#endif
+		    	ST7789_WriteString(0, tFont.height + (tFont.height * 0.75), line, tFont, WHITE, BLACK);
+		    	//
+		    	//netChipID
+		    	sprintf(line, "chip : %s", netChipID);
+		    	ST7789_WriteString(0, ST7789_WIDTH - fntKey.height, mkLineCenter(line, ST7789_WIDTH / fntKey.width), fntKey, MAGENTA, YELLOW);
+		    	//
 #endif
 		    break;
 			case msg_rxDone:
@@ -2007,7 +2118,8 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(irLED_GPIO_Port, irLED_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|STROB_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|NET_CS_Pin
+                          |NET_RST_Pin|STROB_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, tLED_Pin|ERR_LED_Pin, GPIO_PIN_RESET);
@@ -2043,14 +2155,20 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(IRED_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : OLED_DC_Pin OLED_RST_Pin OLED_CS_Pin ERR_LED_Pin
-                           STROB_Pin */
-  GPIO_InitStruct.Pin = OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|ERR_LED_Pin
-                          |STROB_Pin;
+  /*Configure GPIO pins : OLED_DC_Pin OLED_RST_Pin OLED_CS_Pin NET_CS_Pin
+                           NET_RST_Pin ERR_LED_Pin STROB_Pin */
+  GPIO_InitStruct.Pin = OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|NET_CS_Pin
+                          |NET_RST_Pin|ERR_LED_Pin|STROB_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : NET_EXTI8_Pin */
+  GPIO_InitStruct.Pin = NET_EXTI8_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(NET_EXTI8_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : tLED_Pin */
   GPIO_InitStruct.Pin = tLED_Pin;
@@ -2068,6 +2186,9 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI4_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 

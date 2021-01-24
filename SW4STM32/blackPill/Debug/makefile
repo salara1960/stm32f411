@@ -11,6 +11,20 @@ RM := rm -rf
 -include Drivers/STM32F4xx_HAL_Driver/subdir.mk
 -include Drivers/CMSIS/subdir.mk
 -include Application/User/ST7789/subdir.mk
+-include Application/User/NET/multicast/subdir.mk
+-include Application/User/NET/loopback/subdir.mk
+-include Application/User/NET/httpServer/subdir.mk
+-include Application/User/NET/W5500/subdir.mk
+-include Application/User/NET/TFTP/subdir.mk
+-include Application/User/NET/SNTP/subdir.mk
+-include Application/User/NET/SNMP/subdir.mk
+-include Application/User/NET/MQTT/MQTTPacket/src/subdir.mk
+-include Application/User/NET/MQTT/subdir.mk
+-include Application/User/NET/FTPServer/subdir.mk
+-include Application/User/NET/FTPClient/subdir.mk
+-include Application/User/NET/DNS/subdir.mk
+-include Application/User/NET/DHCP/subdir.mk
+-include Application/User/NET/subdir.mk
 -include Application/User/subdir.mk
 -include Application/SW4STM32/subdir.mk
 -include subdir.mk
@@ -49,7 +63,8 @@ clean:
 post-build:
 	-@echo 'Generating hex and Printing size information:'
 	arm-none-eabi-objcopy -O ihex "blackPill.elf" "blackPill.hex"
-	arm-none-eabi-size "blackPill.elf"
+	arm-none-eabi-objcopy -O binary "blackPill.elf" "blackPill.bin"
+	ls -la | grep "blackPill.*"
 	-@echo ' '
 
 .PHONY: all clean dependents

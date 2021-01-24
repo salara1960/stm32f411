@@ -27,4 +27,6 @@
 
 #define SET_IRED
 
+#define SET_NET
+
 #endif /* APPLICATION_USER_HDR_H_ */
