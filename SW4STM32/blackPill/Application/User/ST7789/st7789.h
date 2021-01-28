@@ -213,7 +213,12 @@
 
 #define ABS(x) ((x) > 0 ? (x) : -(x))
 
+
+uint8_t dma_spi2_flag;
+uint8_t dma_spi2_cnt;
+
 /* Basic functions. */
+void ipsOn(uint8_t act);
 void ST7789_Reset();
 void ST7789_Init();
 void ST7789_SetRotation(uint8_t m);

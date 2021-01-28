@@ -12,9 +12,12 @@
 
 //#define SET_OLED_SPI
 #define SET_IPS
+#ifdef SET_IPS
+	//#define SET_WITH_CS
+	#define SET_WITH_DMA
+#endif
 
 //#define SET_COMPAS_BLOCK
-//#define MIC_PRESENT
 
 #define SET_MPU
 //#define SET_MPU_INTERRUPT

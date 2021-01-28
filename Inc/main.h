@@ -51,6 +51,7 @@ extern "C" {
 #include "st7789.h"
 #ifdef SET_NET
 	#include "socket.h"
+	#include "dhcp.h"
 #endif
 
 /* USER CODE END Includes */
@@ -79,11 +80,11 @@ typedef enum {
 	msg_readBMX,
 	msg_calibr1Done,
 	msg_calibr2Done,
-	msg_iMPU,
 	msg_mpuAllRead,
 	msg_mpuAllReady,
 	msg_mpuReadInterruptsStatus,
 	msg_shiftEvent,
+	msg_mkUdp,
 	msg_none
 } evt_t;
 
@@ -197,8 +198,6 @@ enum {
 
 /* USER CODE END EM */
 
-void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
-
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -216,16 +215,11 @@ void Error_Handler(void);
 #define NET_MOSI_GPIO_Port GPIOA
 #define iADC_Pin GPIO_PIN_2
 #define iADC_GPIO_Port GPIOA
-#define MIC_DIG_Pin GPIO_PIN_3
-#define MIC_DIG_GPIO_Port GPIOA
-#define MIC_DIG_EXTI_IRQn EXTI3_IRQn
-#define iEXTI4_Pin GPIO_PIN_4
-#define iEXTI4_GPIO_Port GPIOA
-#define iEXTI4_EXTI_IRQn EXTI4_IRQn
+#define NET_EXTI4_Pin GPIO_PIN_4
+#define NET_EXTI4_GPIO_Port GPIOA
+#define NET_EXTI4_EXTI_IRQn EXTI4_IRQn
 #define IRED_Pin GPIO_PIN_5
 #define IRED_GPIO_Port GPIOA
-#define PWM_Pin GPIO_PIN_6
-#define PWM_GPIO_Port GPIOA
 #define OLED_DC_Pin GPIO_PIN_0
 #define OLED_DC_GPIO_Port GPIOB
 #define OLED_RST_Pin GPIO_PIN_1
@@ -242,9 +236,6 @@ void Error_Handler(void);
 #define NET_RST_GPIO_Port GPIOB
 #define OLED_MOSI_Pin GPIO_PIN_15
 #define OLED_MOSI_GPIO_Port GPIOB
-#define NET_EXTI8_Pin GPIO_PIN_8
-#define NET_EXTI8_GPIO_Port GPIOA
-#define NET_EXTI8_EXTI_IRQn EXTI9_5_IRQn
 #define NET_MISO_Pin GPIO_PIN_11
 #define NET_MISO_GPIO_Port GPIOA
 #define tLED_Pin GPIO_PIN_5

@@ -8,19 +8,24 @@
 
 //uint8_t spiRdy = 1;
 //uint8_t withDMA = 0;
-const uint32_t waits = 100;
+const uint32_t waits = 150;
+uint8_t *frm_buf = NULL;
+uint8_t dma_spi2_flag = 0;
+uint8_t dma_spi2_cnt = 1;
 
 //-----------------------------------------------------------------------------------------
 
 inline void ST7789_Select()
 {
-	//ST7789_SelON();
-	//asm(" nop");
+#ifdef SET_WITH_CS
+	ST7789_SelON();
+#endif
 }
 inline void ST7789_UnSelect()
 {
-	//ST7789_SelOFF();
-	//asm(" nop");
+#ifdef SET_WITH_CS
+	ST7789_SelOFF();
+#endif
 }
 //-----------------------------------------------------------------------------------------
 /**
@@ -58,16 +63,20 @@ HAL_StatusTypeDef rt = HAL_OK;
 	ST7789_DC_Set();
 
 	// split data in small chunks because HAL can't send more than 64K at once
-
 	while (buff_size > 0) {
 		uint16_t chunk_size = buff_size > 65535 ? 65535 : buff_size;
+/*#ifdef SET_WITH_DMA
+		dma_spi2_cnt = 1;
+		rt |= HAL_SPI_Transmit_DMA(portOLED, buff, chunk_size);
+		while (!dma_spi2_flag) {}
+		dma_spi2_flag = 0;
+#else*/
 		rt |= HAL_SPI_Transmit(portOLED, buff, chunk_size, waits);
+//#endif
 		buff += chunk_size;
 		buff_size -= chunk_size;
+
 	}
-
-	//rt |= HAL_SPI_Transmit_DMA(portOLED, buff, buff_size);
-
 
 	ST7789_UnSelect();
 
@@ -85,6 +94,12 @@ static void ST7789_WriteSmallData(uint8_t data)
 	ST7789_DC_Set();
 	if (HAL_SPI_Transmit(portOLED, &data, sizeof(data), waits) != HAL_OK) devError |= devSPI;
 	ST7789_UnSelect();
+}
+//-----------------------------------------------------------------------------------------
+void ipsOn(uint8_t act)
+{
+	if (act) ST7789_WriteCommand(ST7789_DISPON);
+	    else ST7789_WriteCommand(ST7789_DISPOFF);
 }
 //-----------------------------------------------------------------------------------------
 /**
@@ -201,15 +216,9 @@ void ST7789_Init()
 		ST7789_WriteData(data, sizeof(data));
 	}
 
-	/*ST7789_WriteCommand(ST7789_INVON);		//	Inversion ON
-	ST7789_WriteCommand(ST7789_SLPOUT);	//	Out of sleep mode
-  	ST7789_WriteCommand(ST7789_NORON);		//	Normal Display on
-  	ST7789_WriteCommand(ST7789_DISPON);	//	Main screen turned on*/
-
   	uint8_t cmds[] = {ST7789_INVON, ST7789_SLPOUT, ST7789_NORON, ST7789_DISPON};
   	ST7789_WriteCommands(cmds, sizeof(cmds));
 
-	HAL_Delay(2);//50
 
 	ST7789_Fill_Color(BLACK);				//	Fill with Black.
 }
@@ -221,17 +230,33 @@ void ST7789_Init()
  */
 void ST7789_Fill_Color(uint16_t color)
 {
-uint16_t i, j;
-//uint8_t data[] = {color >> 8, color & 0xFF};
 
 	ST7789_SetAddressWindow(0, 0, ST7789_WIDTH - 1, ST7789_HEIGHT - 1);
-	ST7789_Select();
-	for (i = 0; i < ST7789_WIDTH; i++)
-		for (j = 0; j < ST7789_HEIGHT; j++) {
-			uint8_t data[] = {color >> 8, color & 0xFF};
+//	ST7789_Select();
+#ifdef SET_WITH_DMA
+	dma_spi2_cnt = 2;
+	int len = (ST7789_WIDTH * ST7789_HEIGHT) / dma_spi2_cnt;
+	frm_buf = (uint8_t *)calloc(1, len);
+	if (!frm_buf) return;
+	for (uint16_t j = 0; j < len; j++) {
+		frm_buf[j * 2] = color >> 8;
+		frm_buf[(j * 2) + 1] = color & 0xff;
+	}
+	ST7789_DC_Set();
+	HAL_SPI_Transmit_DMA(portOLED, frm_buf, len * dma_spi2_cnt);
+	while (!dma_spi2_flag) {}
+	dma_spi2_flag = 0;
+
+	if (frm_buf) free(frm_buf);
+
+#else
+	uint8_t data[] = {color >> 8, color & 0xFF};
+	for (uint16_t i = 0; i < ST7789_WIDTH; i++)
+		for (uint16_t j = 0; j < ST7789_HEIGHT; j++) {
 			ST7789_WriteData(data, sizeof(data));
 		}
-	ST7789_UnSelect();
+#endif
+	//	ST7789_UnSelect();
 }
 //-----------------------------------------------------------------------------------------
 /**

@@ -931,7 +931,7 @@ void DHCP_init(uint8_t s, uint8_t * buf)
 {
    uint8_t zeroip[4] = {0,0,0,0};
    getSHAR(DHCP_CHADDR);
-   if((DHCP_CHADDR[0] | DHCP_CHADDR[1]  | DHCP_CHADDR[2] | DHCP_CHADDR[3] | DHCP_CHADDR[4] | DHCP_CHADDR[5]) == 0x00)
+   if ((DHCP_CHADDR[0] | DHCP_CHADDR[1]  | DHCP_CHADDR[2] | DHCP_CHADDR[3] | DHCP_CHADDR[4] | DHCP_CHADDR[5]) == 0x00)
    {
       // assigning temporary mac address, you should be set SHAR before call this function. 
       DHCP_CHADDR[0] = 0x00;
@@ -987,7 +987,7 @@ void getGWfromDHCP(uint8_t* ip)
 	ip[0] =DHCP_allocated_gw[0];
 	ip[1] =DHCP_allocated_gw[1];
 	ip[2] =DHCP_allocated_gw[2];
-	ip[3] =DHCP_allocated_gw[3];			
+	ip[3] =DHCP_allocated_gw[3];
 }
 
 void getSNfromDHCP(uint8_t* ip)
@@ -995,7 +995,7 @@ void getSNfromDHCP(uint8_t* ip)
    ip[0] = DHCP_allocated_sn[0];
    ip[1] = DHCP_allocated_sn[1];
    ip[2] = DHCP_allocated_sn[2];
-   ip[3] = DHCP_allocated_sn[3];         
+   ip[3] = DHCP_allocated_sn[3];
 }
 
 void getDNSfromDHCP(uint8_t* ip)
@@ -1003,7 +1003,7 @@ void getDNSfromDHCP(uint8_t* ip)
    ip[0] = DHCP_allocated_dns[0];
    ip[1] = DHCP_allocated_dns[1];
    ip[2] = DHCP_allocated_dns[2];
-   ip[3] = DHCP_allocated_dns[3];         
+   ip[3] = DHCP_allocated_dns[3];
 }
 
 uint32_t getDHCPLeasetime(void)
