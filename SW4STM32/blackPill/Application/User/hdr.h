@@ -10,8 +10,8 @@
 
 #define SET_BMx280
 
-//#define SET_OLED_SPI
-#define SET_IPS
+#define SET_OLED_SPI
+//#define SET_IPS
 #ifdef SET_IPS
 	//#define SET_WITH_CS
 	#define SET_WITH_DMA
@@ -31,5 +31,8 @@
 #define SET_IRED
 
 #define SET_NET
+#ifdef SET_NET
+	#define SET_NET_DEBUG
+#endif
 
 #endif /* APPLICATION_USER_HDR_H_ */

@@ -65,8 +65,13 @@
 #define _140ms (_1ms * 140)
 #define _150ms (_1ms * 150)
 #define _200ms (_1ms * 200)
+#define _210ms (_1ms * 210)
+#define _220ms (_1ms * 220)
+#define _230ms (_1ms * 230)
+#define _240ms (_1ms * 240)
 #define _250ms (_1ms * 250)
 #define _300ms (_1ms * 300)
+#define _350ms (_1ms * 350)
 #define _400ms (_1ms * 400)
 #define _500ms (_1ms * 500)
 #define _600ms (_1ms * 600)
@@ -80,6 +85,10 @@
 #define _4s (_1s * 4)//4000
 #define _5s (_1s * 5)//5000
 #define _10s (_1s * 10)//10000
+#define _15s (_1s * 15)
+#define _20s (_1s * 20)
+#define _25s (_1s * 25)
+#define _30s (_1s * 30)
 
 /* USER CODE END PTD */
 
@@ -199,7 +208,7 @@ uint32_t seconds = 0;
 volatile uint8_t devError = 0;
 uint32_t tmr_out = 0;
 uint32_t errStatCnt = 0;
-uint32_t cikl_out = _5s;
+uint32_t cikl_out = _30s;
 
 
 #ifdef SET_MPU
@@ -252,17 +261,19 @@ struct mallinfo mem_info;// = mallinfo();
 	char netChipID[16] = {0};
 	int dhcpSOC = 0;
 	int udpSOC = 1;
+	int tcpSOC = 2;
 	uint8_t stat_dhcp = DHCP_STOPPED;
 	volatile uint8_t ip_assigned = 0;
 	volatile uint32_t net_cnt = 0;
 	uint8_t udpAddr[4] = {101};
 	uint16_t udpPort = 8004;
-	char udpText[64] = {0};
+	uint16_t tcpPort = 8008;
+	char udpText[128] = {0};
 	int mlen = 0;//sprintf(udpText, "Message from device=%s ip=%s\r\n", netChipID, localIP);
 
 	wiz_NetInfo gWIZNETINFO = {
 				.mac = {0x00, 0x08, 0xdc, 0x47, 0x47, 0x54},
-				.ip = {192, 168, 0, 200},
+				.ip = {192, 168, 0, 150},
 				.sn = {255, 255, 255, 0},
 				.gw = {192, 168, 0, 1},
 				.dns = {0, 0, 0, 0},
@@ -272,9 +283,9 @@ struct mallinfo mem_info;// = mallinfo();
 	void W5500_Reset()
 	{
 		HAL_GPIO_WritePin(NET_RST_GPIO_Port, NET_RST_Pin, GPIO_PIN_RESET);
-		HAL_Delay(1);
+		HAL_Delay(2);
 		HAL_GPIO_WritePin(NET_RST_GPIO_Port, NET_RST_Pin, GPIO_PIN_SET);
-		HAL_Delay(10);
+		HAL_Delay(20);
 	}
 	//--------------------------------------------------------------------------
 	void W5500_Select() { CS_NET_SELECT(); }
@@ -317,8 +328,50 @@ struct mallinfo mem_info;// = mallinfo();
 		devError |= devNet;
 	}
 	//--------------------------------------------------------------------------
+	static char *socStatus(int code)
+	{
+		switch (code) {
+			case SOCK_ERROR://            0
+				return "Ok";
+			case SOCKERR_SOCKNUM://       (SOCK_ERROR - 1)     ///< Invalid socket number
+				return "Invalid socket number";
+			case SOCKERR_SOCKOPT://       (SOCK_ERROR - 2)     ///< Invalid socket option
+				return "Invalid socket option";
+			case SOCKERR_SOCKINIT://      (SOCK_ERROR - 3)     ///< Socket is not initialized or SIPR is Zero IP address when Sn_MR_TCP
+				return "Socket is not init or SIPR is Zero IP";
+			case SOCKERR_SOCKCLOSED://    (SOCK_ERROR - 4)     ///< Socket unexpectedly closed.
+				return "Socket unexpectedly closed";
+			case SOCKERR_SOCKMODE://      (SOCK_ERROR - 5)     ///< Invalid socket mode for socket operation.
+				return "Invalid socket mode";
+			case SOCKERR_SOCKFLAG://      (SOCK_ERROR - 6)     ///< Invalid socket flag
+				return "Invalid socket flag";
+			case SOCKERR_SOCKSTATUS://    (SOCK_ERROR - 7)     ///< Invalid socket status for socket operation.
+				return "Invalid socket status";
+			case SOCKERR_ARG://           (SOCK_ERROR - 10)    ///< Invalid argument.
+				return "Invalid argument";
+			case SOCKERR_PORTZERO://      (SOCK_ERROR - 11)    ///< Port number is zero
+				return "Zero Port number";
+			case SOCKERR_IPINVALID://     (SOCK_ERROR - 12)    ///< Invalid IP address
+				return "Invalid IP";
+			case SOCKERR_TIMEOUT://       (SOCK_ERROR - 13)    ///< Timeout occurred
+				return "Timeout";
+			case SOCKERR_DATALEN://       (SOCK_ERROR - 14)    ///< Data length is zero or greater than buffer max size.
+				return "Zero data length";
+			case SOCKERR_BUFFER://        (SOCK_ERROR - 15)    ///< Socket buffer is not enough for data communication.
+				return "Socket data buffer is not enough";
+			case SOCK_LISTEN://                  0x14
+				return "Listen";
+			case SOCK_ESTABLISHED://             0x17
+				return "Connected";
+			case SOCK_CLOSING://                 0x1A
+				return "Socket closed";
+			case SOCK_CLOSE_WAIT://              0x1C
+				return "Client closed connection";
+			default : return "Unkown";
+		}
+	}
 #endif
-
+	//--------------------------------------------------------------------------
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -450,9 +503,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			putMsg(msg_sec);
 		}
 		//
-	} else if (htim->Instance == TIM3) {
+	}// else if (htim->Instance == TIM3) {
 		//PWM pinA5
-	}
+	//}
 #ifdef SET_IRED
 	else if (htim->Instance == TIM4) {
 		uint8_t irdata = RECIV_PIN; // пин для приёма
@@ -911,6 +964,36 @@ switch (outMode) {
 	return &tmp[0];
 }
 //-------------------------------------------------------------------------------------------
+void toDisplay(char *line)
+{
+	line[0] = '\0';
+
+#if defined(SET_OLED_SPI)
+	if (!devError) sprintf(line+strlen(line), "  VCC:%.3fv\n", VccF);
+			  else sprintf(line+strlen(line), " devError:0x%02X\n", devError);
+	//if (mpuPresent) sprintf(line+strlen(line), " mpuTemp:%.2f%c\n", mpu_data.TEMP, gradus);
+	sprintf(line+strlen(line), "  pres:%.2fmm\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
+	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
+	sprintf(line+strlen(line), " azimut:%.2f%c\n", compData.angleHMC, gradus);
+	if (ip_assigned) sprintf(line+strlen(line), " %s", localIP);
+	spi_ssd1306_text_xy(line, 2, 2);
+#elif defined(SET_IPS)
+	if (!devError) sprintf(line+strlen(line), "    Vcc:%.3fv\n", VccF);
+			  else sprintf(line+strlen(line), "   devError:0x%02X\n", devError);
+	if (mpuPresent) {
+		sprintf(line+strlen(line), "   mpuTemp:%.2f^\n", mpu_data.TEMP);
+		sprintf(line+strlen(line), "   mpuAccel:%d,%d,%d\n", mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL);
+		sprintf(line+strlen(line), "   mpuGyro:%d,%d,%d\n", mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
+	}
+	sprintf(line+strlen(line), "   pres:%.2fmm\n   temp:%.2f^\n", sensors.bmx_pres, sensors.bmx_temp);
+	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "   humi:%.2f%%\n", sensors.bmx_humi);
+	sprintf(line+strlen(line), "   azimut:%.2f^\n   temp2:%.2f^\n", compData.angleHMC, compData.tempHMC);
+	if (ip_assigned) sprintf(line+strlen(line), "%s | %d", localIP, (int)cnt_udp);
+	ST7789_WriteString(0, tFont.height + (tFont.height * 0.75), line, tFont, WHITE, BLACK);
+#endif
+//
+}
+//-------------------------------------------------------------------------------------------
 
 /* USER CODE END 0 */
 
@@ -1086,12 +1169,19 @@ int main(void)
 
 	uint8_t netFlag = SF_IO_NONBLOCK | SF_BROAD_BLOCK;//SF_UNI_BLOCK;//SF_MULTI_BLOCK;//SF_BROAD_BLOCK;//SF_IO_NONBLOCK
 	int32_t cnt_udp = 0;
-	uint8_t en_udp = 1;
+	uint8_t en_udp = 0;
 	int32_t stat_udp;
 	int8_t usoc = -1;
-	const uint8_t udp_sec_period = 5;
-	uint8_t udp_sec = udp_sec_period;
+	const uint8_t udp_sec_period = 10;
+	uint8_t udp_sec = 5;
 	uint32_t udp_pack_num = 0;
+
+	uint8_t en_tcp = 0;
+	uint8_t con_tcp = 0;
+	int8_t tsoc = -1;
+	int8_t stat_tcp = SOCKERR_SOCKCLOSED;
+	uint8_t cliIP[4] = {0};
+	uint8_t statSR;
 
 #endif
 
@@ -1129,7 +1219,11 @@ int main(void)
 
 
 #ifdef SET_NET
+    en_udp = 1;
     if (usoc < 0) putMsg(msg_mkUdp);
+    HAL_Delay(10);
+    en_tcp = 1;
+    if (tsoc < 0) putMsg(msg_mkTcp);
 #endif
 
 
@@ -1206,11 +1300,40 @@ int main(void)
 				if (usoc < 0) {
 					usoc = socket(udpSOC, Sn_MR_UDP, udpPort, netFlag);
 				}
-				/*if (usoc == udpSOC) {
-					if (net_con != SOCK_OK) {
-						net_con = connect(udpSOC, udpAddr, udpPort);
+			break;
+			case msg_mkTcp:
+				if (tsoc < 0) {
+					tsoc = socket(tcpSOC, Sn_MR_TCP, tcpPort, netFlag);
+					if (tsoc == tcpSOC) {
+						stat_tcp = listen(tcpSOC);
+#ifdef SET_NET_DEBUG
+						Report(NULL, 0, "\tTcp socket create OK (Listen=%d)\r\n", stat_tcp);
+#endif
+						putMsg(msg_mkListen);
 					}
-				}*/
+				}
+			break;
+			case msg_mkListen:
+				statSR = getSn_SR(tcpSOC);
+				//if (statSR == SOCK_LISTEN) {
+				//	putMsg(msg_mkListen);
+				//} else
+				if (statSR == SOCK_ESTABLISHED) {
+					getsockopt(tcpSOC, SO_DESTIP, &cliIP);
+					con_tcp = 1;
+#ifdef SET_NET_DEBUG
+					Report(NULL, 0, "\t[%s] Connect to client:  %d.%d.%d.%d\r\n", socStatus(statSR), cliIP[0], cliIP[1], cliIP[2], cliIP[3]);
+#endif
+				} else if (statSR < 0) {
+					close(tcpSOC);
+					tsoc = -1;
+					con_tcp = 0;
+#ifdef SET_NET_DEBUG
+					Report(NULL, 0, "\t[%s] Socket error %d\r\n", socStatus(statSR), statSR);
+#endif
+				} else {
+					putMsg(msg_mkListen);
+				}
 			break;
 		    case msg_adcReady:
 		    {
@@ -1229,6 +1352,37 @@ int main(void)
 		    case msg_10ms:
 		    	schMS++;
 		    	//
+#ifdef SET_NET
+		    	if (usoc < 0) {
+		    		if (en_udp) putMsg(msg_mkUdp);
+		    	}
+		    	//
+		    	if (tsoc < 0) {
+		    		if (en_tcp) putMsg(msg_mkTcp);
+		    	} else {
+		    		statSR = getSn_SR(tcpSOC);
+		    		if (statSR == SOCK_CLOSE_WAIT) {
+		    			if (tsoc == tcpSOC) {
+		    				close(tcpSOC);
+		    				tsoc = -1;
+		    				con_tcp = 0;
+	#ifdef SET_NET_DEBUG
+		    				Report(NULL, 0, "\t[%s] (%d) Disconnect client:  %d.%d.%d.%d\r\n",
+		    								socStatus(statSR), statSR,
+											cliIP[0], cliIP[1], cliIP[2], cliIP[3]);
+	#endif
+		    			}
+		    		}
+		    	}
+#endif
+		    	//
+		    	if (tmr_out) {
+		    		if (chkTimer(tmr_out)) {
+		    			tmr_out = 0;
+		    			putMsg(msg_out);
+		    		}
+		    	}
+		    	//
 		    	if (!setRTC) {
 		    		setRTC = 1;
 		    		set_Date(epoch);
@@ -1242,85 +1396,27 @@ int main(void)
 		    		//
 		    	}
 		    	//
-		    	if (tmr_out) {
-		    		if (chkTimer(tmr_out)) {
-		    			tmr_out = 0;
-		    			putMsg(msg_out);
-		    		}
-		    	}
-		    	//
 		    break;
 		    case msg_sec:
 		    	led_OnOff();
-		    	//
 		    	//
 #if defined(SET_OLED_SPI) || defined(SET_IPS)
 		    	sec_to_str_time(line);
 #endif
 #if defined(SET_OLED_SPI)
-	#ifdef SET_MPU
-		    	if (!devError) sprintf(line+strlen(line), "\n  VCC:%.3fv", VccF);
-		    	          else sprintf(line+strlen(line), "\n devError:0x%02X", devError);
-		    	if (mpuPresent) {
-		    		sprintf(line+strlen(line), "\n mpuTemp:%.2f%c\n", mpu_data.TEMP, gradus);
-		    	} else {
-		    		sprintf(line+strlen(line), "\n mpuTemp: ---\n");
-		    	}
-	#else
-		    	sprintf(line+strlen(line), "\n  VCC:%.3fv\n devError:0x%02X\n", Vcc, devError);
-	#endif
-	#ifdef SET_BMx280
-		    	sprintf(line+strlen(line), "  pres:%.2fmm\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
-		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
-	#endif
-		    	sprintf(line+strlen(line), " azimut:%.2f%c\n", compData.angleHMC, gradus);
-		    	/*if (sfst) {
-		    		sfst = 0;
-		    		sprintf(line+strlen(line), "%s", devName);
-		    		putMsg(msg_shiftEvent);
-		    	}*/
+		    	//print time
 		    	spi_ssd1306_text_xy(line, 2, 1);
+		    	toDisplay(line);
 #elif defined(SET_IPS)
-		    	//
+		    	//print time
 		    	ST7789_WriteString(0, 0, mkLineCenter(line, ST7789_WIDTH / fntKey.width), fntKey, RED, WHITE);
-		    	//
-		    	line[0] = '\0';
-	#ifdef SET_MPU
-		    	if (!devError) sprintf(line+strlen(line), "    Vcc:%.3fv\n", VccF);
-		    	          else sprintf(line+strlen(line), "   devError:0x%02X\n", devError);
-		    	if (mpuPresent) {
-		    		sprintf(line+strlen(line), "   mpuTemp:%.2f^\n", mpu_data.TEMP);
-		    		sprintf(line+strlen(line), "   mpuAccel:%d,%d,%d\n", mpu_data.xACCEL, mpu_data.yACCEL, mpu_data.zACCEL);
-		    		sprintf(line+strlen(line), "   mpuGyro:%d,%d,%d\n", mpu_data.xGYRO, mpu_data.yGYRO, mpu_data.zGYRO);
-		    	} else {
-		    		sprintf(line+strlen(line), "   mpuTemp: ---\n");
-		    	}
-	#else
-		    	sprintf(line+strlen(line), "VCC:%.3fv\n devError:0x%02X\n", Vcc, devError);
-	#endif
-	#ifdef SET_BMx280
-		    	sprintf(line+strlen(line), "   pres:%.2fmm\n   temp:%.2f^\n", sensors.bmx_pres, sensors.bmx_temp);
-		    	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "   humi:%.2f%%\n", sensors.bmx_humi);
-	#endif
-		    	sprintf(line+strlen(line), "   azimut:%.2f^\n   temp2:%.2f^\n", compData.angleHMC, compData.tempHMC);
-	#ifdef SET_NET
-		    	if (ip_assigned) sprintf(line+strlen(line), "%s | %d", localIP, (int)cnt_udp);
-	#endif
-		    	ST7789_WriteString(0, tFont.height + (tFont.height * 0.75), line, tFont, WHITE, BLACK);
-
-		    	//
+		    	toDisplay(line);
 		    	//netChipID
 		    	sprintf(line, "chip : %s", netChipID);
 		    	ST7789_WriteString(0, ST7789_WIDTH - fntKey.height, mkLineCenter(line, ST7789_WIDTH / fntKey.width), fntKey, MAGENTA, YELLOW);
-		    	//sprintf(netTmp, " usoc=%d con=%d ", usoc, net_con);
-		    	//ST7789_WriteString(0, ST7789_WIDTH - fntKey.height, mkLineCenter(netTmp, ST7789_WIDTH / fntKey.width), fntKey, MAGENTA, YELLOW);
-		    	/*
-		    	if (!on_ips) {
-		    		on_ips = 1;
-		    		ipsOn(on_ips);
-		    	}
-		    	*/
-	#ifdef SET_NET
+#endif
+		    	//
+#ifdef SET_NET
 		    	if (ip_assigned) {
 		    		if (usoc < 0) putMsg(msg_mkUdp);
 		    		else {
@@ -1328,7 +1424,8 @@ int main(void)
 		    			if (!udp_sec) {
 		    				udp_sec = udp_sec_period;
 		    				if (en_udp) {
-		    					mlen = sprintf(udpText, "[%d] Message from device=%s ip=%s \r\n", ++udp_pack_num, netChipID, localIP);
+		    					sec_to_str_time(line);
+		    					mlen = sprintf(udpText, "[%ld] %s | device=%s ip=%s\r\n", ++udp_pack_num, line, netChipID, localIP);
 		    					stat_udp = sendto(udpSOC, (uint8_t *)udpText, mlen, udpAddr, udpPort);
 		    					if (netFlag & SF_IO_NONBLOCK) {
 		    						if (stat_udp == mlen) cnt_udp++;
@@ -1338,13 +1435,19 @@ int main(void)
 		    					} else {
 		    						if (stat_udp > 0) cnt_udp++; else cnt_udp = stat_udp;
 		    					}
+	#ifdef SET_OLED_SPI
+		    					sprintf(line, "   udp: %d", (int)cnt_udp);
+		    					spi_ssd1306_clear_line(8);
+		    					spi_ssd1306_text_xy(line, 1, 8);
+	#endif
+		    					if (stat_udp <= 0) {
+		    						if (cnt_udp > 0) cnt_udp--;
+		    					}
 		    				}
 		    			}
 		    		}
 		    	}
-	#endif
 #endif
-STROB_UP();
 		    break;
 			case msg_rxDone:
 				Report(NULL, 0, stx);
@@ -1370,7 +1473,17 @@ STROB_UP();
 						usoc = -1;
 						cnt_udp = 0;
 						udp_pack_num = 0;
-						putMsg(msg_mkUdp);
+						//putMsg(msg_mkUdp);
+					}
+				}
+				else if (strstr(stx, "tcp_on") != NULL) {
+					en_tcp = 1;
+				} else if (strstr(stx, "tcp_off") != NULL) {
+					en_tcp = 0;
+					if (tsoc == tcpSOC) {
+						close(tcpSOC);
+						tsoc = -1;
+						con_tcp = 0;
 					}
 				}
 #endif
@@ -1914,7 +2027,7 @@ static void MX_SPI4_Init(void)
   hspi4.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi4.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi4.Init.NSS = SPI_NSS_SOFT;
-  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi4.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi4.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi4.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -1942,7 +2055,6 @@ static void MX_TIM2_Init(void)
   /* USER CODE END TIM2_Init 0 */
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
 
   /* USER CODE BEGIN TIM2_Init 1 */
@@ -1959,23 +2071,17 @@ static void MX_TIM2_Init(void)
   	  	  //
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 446;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  htim2.Init.Period = 223;
+  htim2.Init.Prescaler = 9999;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 9;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
   }
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
   if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
-  sSlaveConfig.InputTrigger = TIM_TS_ITR0;
-  if (HAL_TIM_SlaveConfigSynchro(&htim2, &sSlaveConfig) != HAL_OK)
   {
     Error_Handler();
   }

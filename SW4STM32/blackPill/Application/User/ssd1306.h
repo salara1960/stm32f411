@@ -95,6 +95,7 @@
 	void spi_ssd1306_clear_line(uint8_t cy);
 	void spi_ssd1306_text_xy(const char *stroka, uint8_t cx, uint8_t cy);
 	void spi_ssd1306_text(const char *stroka);
+	uint8_t spi_ssd1306_calcx(int len);
 #endif
 
 //------------------------------------------------------------------------

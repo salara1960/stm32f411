@@ -85,6 +85,8 @@ typedef enum {
 	msg_mpuReadInterruptsStatus,
 	msg_shiftEvent,
 	msg_mkUdp,
+	msg_mkTcp,
+	msg_mkListen,
 	msg_none
 } evt_t;
 
@@ -250,6 +252,8 @@ void Error_Handler(void);
 
 #define STROB_UP()   HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_SET);
 #define STROB_DOWN() HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_RESET);
+#define STROB_ONOFF() HAL_GPIO_TogglePin(STROB_GPIO_Port, STROB_Pin);
+
 
 #define ON_ERR_LED() HAL_GPIO_WritePin(ERR_LED_GPIO_Port, ERR_LED_Pin, GPIO_PIN_SET);
 #define OFF_ERR_LED() HAL_GPIO_WritePin(ERR_LED_GPIO_Port, ERR_LED_Pin, GPIO_PIN_RESET);
