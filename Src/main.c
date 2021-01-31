@@ -208,7 +208,7 @@ uint32_t seconds = 0;
 volatile uint8_t devError = 0;
 uint32_t tmr_out = 0;
 uint32_t errStatCnt = 0;
-uint32_t cikl_out = _30s;
+uint32_t cikl_out = _10s;
 
 
 #ifdef SET_MPU
@@ -270,6 +270,9 @@ struct mallinfo mem_info;// = mallinfo();
 	uint16_t tcpPort = 8008;
 	char udpText[128] = {0};
 	int mlen = 0;//sprintf(udpText, "Message from device=%s ip=%s\r\n", netChipID, localIP);
+	char tcpBuf[256] = {0};
+	char tcpTmp[128] = {0};
+	uint8_t con_tcp = 0;
 
 	wiz_NetInfo gWIZNETINFO = {
 				.mac = {0x00, 0x08, 0xdc, 0x47, 0x47, 0x54},
@@ -695,6 +698,12 @@ char *buff = &txData[0];
 		}*/
 
 //		free(buff);//vPortFree(buff);
+
+#ifdef SET_NET
+		if (con_tcp) {
+			send(tcpSOC, (uint8_t *)buff, strlen(buff));
+		}
+#endif
 //	}
 }
 //------------------------------------------------------------------------------------------
@@ -1177,7 +1186,6 @@ int main(void)
 	uint32_t udp_pack_num = 0;
 
 	uint8_t en_tcp = 0;
-	uint8_t con_tcp = 0;
 	int8_t tsoc = -1;
 	int8_t stat_tcp = SOCKERR_SOCKCLOSED;
 	uint8_t cliIP[4] = {0};
@@ -1307,7 +1315,7 @@ int main(void)
 					if (tsoc == tcpSOC) {
 						stat_tcp = listen(tcpSOC);
 #ifdef SET_NET_DEBUG
-						Report(NULL, 0, "\tTcp socket create OK (Listen=%d)\r\n", stat_tcp);
+						Report(NULL, 0, "\tTcp socket create OK. Listen (%d) tcp client...\r\n", stat_tcp);
 #endif
 						putMsg(msg_mkListen);
 					}
@@ -1319,11 +1327,21 @@ int main(void)
 				//	putMsg(msg_mkListen);
 				//} else
 				if (statSR == SOCK_ESTABLISHED) {
-					getsockopt(tcpSOC, SO_DESTIP, &cliIP);
-					con_tcp = 1;
+					if (!con_tcp) {
+						getsockopt(tcpSOC, SO_DESTIP, &cliIP);
+						con_tcp = 1;
+						memset(tcpBuf, 0, sizeof(tcpBuf));
 #ifdef SET_NET_DEBUG
-					Report(NULL, 0, "\t[%s] Connect to client:  %d.%d.%d.%d\r\n", socStatus(statSR), cliIP[0], cliIP[1], cliIP[2], cliIP[3]);
+						Report(NULL, 0, "\t[%s] Connect to client:  %d.%d.%d.%d\r\n", socStatus(statSR), cliIP[0], cliIP[1], cliIP[2], cliIP[3]);
 #endif
+						/*en_udp = 0;
+						if (usoc == udpSOC) {
+							close(udpSOC);
+							usoc = -1;
+							cnt_udp = 0;
+							udp_pack_num = 0;
+						}*/
+					}
 				} else if (statSR < 0) {
 					close(tcpSOC);
 					tsoc = -1;
@@ -1371,6 +1389,23 @@ int main(void)
 		    								socStatus(statSR), statSR,
 											cliIP[0], cliIP[1], cliIP[2], cliIP[3]);
 	#endif
+		    			}
+		    		}
+		    		if (con_tcp) {
+		    			int32_t rlen = recv(tcpSOC, (uint8_t *)tcpTmp, 64);
+		    			if (rlen > 0) {
+		    				if (sizeof(tcpBuf) > (rlen + strlen(tcpBuf))) {
+		    					strncat(tcpBuf, tcpTmp, rlen);
+		    					if (strstr(tcpBuf, "\r\n")) {
+		    						int rl = strlen(tcpBuf);
+		    						strncpy(stx, tcpBuf, rl);
+		    						tcpBuf[0] = '\0';
+		    						stx[rl] = '\0';
+		    						putMsg(msg_rxDone);
+		    					}
+		    				} else {
+		    					tcpBuf[0] = '\0';
+		    				}
 		    			}
 		    		}
 		    	}
