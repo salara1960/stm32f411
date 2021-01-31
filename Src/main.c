@@ -170,13 +170,6 @@ uint8_t outDebug = 0;
 	char line[MAX_TMP_SIZE] = {0};
 	uint32_t spi_cnt;
 	char devName[32] = {0};//" - STM32F411 -  ";
-	uint32_t tmr_shift = 0;
-
-	#ifdef SET_OLED_SPI
-		uint8_t shiftLine = 8;
-		uint8_t shiftStart = OLED_CMD_SHIFT_START; // activate shift
-	#endif
-
 #endif
 
 #ifdef SET_BMx280
@@ -273,6 +266,13 @@ struct mallinfo mem_info;// = mallinfo();
 	char tcpBuf[256] = {0};
 	char tcpTmp[128] = {0};
 	uint8_t con_tcp = 0;
+
+	int32_t cnt_udp = 0;
+	uint32_t udp_pack_num = 0;
+	uint8_t en_udp = 0;
+	uint8_t en_tcp = 0;
+	int8_t usoc = -1;
+	int8_t tsoc = -1;
 
 	wiz_NetInfo gWIZNETINFO = {
 				.mac = {0x00, 0x08, 0xdc, 0x47, 0x47, 0x54},
@@ -805,6 +805,74 @@ void procCompas()
 }
 //------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------
+void ackParse()
+{
+char *uk, *uke;
+
+	if ((uk = strstr(stx, "epoch=")) != NULL) {
+		uk += 6;
+		if (strlen(uk) >= 10) {
+			uke = strchr(uk, ':');
+			if (uke) {
+				tZone = atoi(uke + 1);
+				*uke = '\0';
+			} else tZone = 0;
+			uint32_t cep = atol(uk);
+			if (cep > 0) set_Date((time_t)cep);
+		}
+	}
+#ifdef SET_NET
+	else if (strstr(stx, "udp_on") != NULL) {
+		en_udp = 1;
+	} else if (strstr(stx, "udp_off") != NULL) {
+		en_udp = 0;
+		if (usoc == udpSOC) {
+			close(udpSOC);
+			usoc = -1;
+			cnt_udp = 0;
+			udp_pack_num = 0;
+		}
+	}
+	else if (strstr(stx, "tcp_on") != NULL) {
+		en_tcp = 1;
+	} else if (strstr(stx, "tcp_off") != NULL) {
+		en_tcp = 0;
+		if (tsoc == tcpSOC) {
+			close(tcpSOC);
+			tsoc = -1;
+			con_tcp = 0;
+		}
+	}
+#endif
+	else if (strstr(stx, "jtune_on") != NULL) {//key_100
+		jtune = 1;
+	} else if (strstr(stx, "jtune_off") != NULL) {//key_200
+		jtune = 0;
+	}
+#ifdef SET_cJSON
+	else if (strstr(stx, "cjson") != NULL) {//key_2
+		outMode = cjsonMode;
+	}
+#endif
+	else if (strstr(stx, "json") != NULL) {//key_1
+		outMode = jsonMode;
+	} else if (strstr(stx, "text") != NULL) {//key_0
+		outMode = textMode;
+	}
+	else if (strstr(stx, "dbg_on") != NULL) {//key_3
+		outDebug = 1;
+	} else if (strstr(stx, "dbg_off") != NULL) {//key_4
+		outDebug = 0;
+	} else if (strstr(stx, "get") != NULL) {//key_eq
+		tmr_out = getTimer(_1ms);
+	} else if (strstr(stx, "rst") != NULL) {//key_ch
+		putMsg(msg_rst);
+	} else if ((uk = strstr(stx, "period=")) != NULL) {//key_minus : -100ms, key_plus : +100ms
+		int val = atoi(uk + 7);
+		if ((val > 0) && (val <= 30000)) cikl_out = val;
+	}
+
+}
 //------------------------------------------------------------------------------------------
 char *printOut(char *tmp)
 {
@@ -1057,7 +1125,6 @@ int main(void)
 	HAL_UART_Receive_IT(&huart1, (uint8_t *)&rxByte, 1);
 
 
-	char *uk = NULL, *uke = NULL;
 	evt_t evt;
 	uint32_t schMS = 0;
 	uint8_t setRTC = 0;
@@ -1077,12 +1144,7 @@ int main(void)
     spi_ssd1306_clear();//clear screen
 
     int8_t len8 = 0;
-    shiftLine = 8;
-    shiftStart = OLED_CMD_SHIFT_STOP;//ART; // activate shift
-//    spi_ssd1306_text_xy(devName, 1, shiftLine);
-    //putMsg(msg_shiftEvent);
 
-    //uint8_t sfst = 1;
 #elif defined(SET_IPS)
 
     ST7789_Reset();
@@ -1177,16 +1239,11 @@ int main(void)
 	}
 
 	uint8_t netFlag = SF_IO_NONBLOCK | SF_BROAD_BLOCK;//SF_UNI_BLOCK;//SF_MULTI_BLOCK;//SF_BROAD_BLOCK;//SF_IO_NONBLOCK
-	int32_t cnt_udp = 0;
-	uint8_t en_udp = 0;
+
 	int32_t stat_udp;
-	int8_t usoc = -1;
 	const uint8_t udp_sec_period = 10;
 	uint8_t udp_sec = 5;
-	uint32_t udp_pack_num = 0;
 
-	uint8_t en_tcp = 0;
-	int8_t tsoc = -1;
 	int8_t stat_tcp = SOCKERR_SOCKCLOSED;
 	uint8_t cliIP[4] = {0};
 	uint8_t statSR;
@@ -1486,90 +1543,11 @@ int main(void)
 		    break;
 			case msg_rxDone:
 				Report(NULL, 0, stx);
-				if ((uk = strstr(stx, "epoch=")) != NULL) {
-					uk += 6;
-					if (strlen(uk) >= 10) {
-						uke = strchr(uk, ':');
-						if (uke) {
-							tZone = atoi(uke + 1);
-							*uke = '\0';
-						} else tZone = 0;
-						uint32_t cep = atol(uk);
-						if (cep > 0) set_Date((time_t)cep);
-					}
-				}
-#ifdef SET_NET
-				else if (strstr(stx, "udp_on") != NULL) {
-					en_udp = 1;
-				} else if (strstr(stx, "udp_off") != NULL) {
-					en_udp = 0;
-					if (usoc == udpSOC) {
-						close(udpSOC);
-						usoc = -1;
-						cnt_udp = 0;
-						udp_pack_num = 0;
-						//putMsg(msg_mkUdp);
-					}
-				}
-				else if (strstr(stx, "tcp_on") != NULL) {
-					en_tcp = 1;
-				} else if (strstr(stx, "tcp_off") != NULL) {
-					en_tcp = 0;
-					if (tsoc == tcpSOC) {
-						close(tcpSOC);
-						tsoc = -1;
-						con_tcp = 0;
-					}
-				}
-#endif
-				else if (strstr(stx, "jtune_on") != NULL) {//key_100
-					jtune = 1;
-				} else if (strstr(stx, "jtune_off") != NULL) {//key_200
-					jtune = 0;
-				}
-#ifdef SET_cJSON
-				else if (strstr(stx, "cjson") != NULL) {//key_2
-					outMode = cjsonMode;
-				}
-#endif
-				else if (strstr(stx, "json") != NULL) {//key_1
-					outMode = jsonMode;
-				} else if (strstr(stx, "text") != NULL) {//key_0
-					outMode = textMode;
-				}
-				else if (strstr(stx, "dbg_on") != NULL) {//key_3
-					outDebug = 1;
-				} else if (strstr(stx, "dbg_off") != NULL) {//key_4
-					outDebug = 0;
-				} else if (strstr(stx, "get") != NULL) {//key_eq
-					//putMsg(msg_out);
-					tmr_out = getTimer(_1ms);
-				} else if (strstr(stx, "rst") != NULL) {//key_ch
-					putMsg(msg_rst);
-				} else if ((uk = strstr(stx, "period=")) != NULL) {//key_minus : -100ms, key_plus : +100ms
-					int val = atoi(uk + 7);
-					if ((val > 0) && (val <= 30000)) cikl_out = val;
-				}
-#ifdef SET_OLED_SPI
-				else if (strstr(stx, "shift") != NULL) {
-					if (shiftStart == OLED_CMD_SHIFT_STOP) shiftStart = OLED_CMD_SHIFT_START;
-					                                  else shiftStart = OLED_CMD_SHIFT_STOP;
-					putMsg(msg_shiftEvent);
-				}
-#endif
+				ackParse();
 			break;
 			case msg_rst:
 				HAL_Delay(800);
 				NVIC_SystemReset();
-			break;
-			case msg_shiftEvent:
-#ifdef SET_OLED_SPI
-				spi_ssd1306_shift(shiftLine, shiftStart);
-				if (shiftStart == OLED_CMD_SHIFT_STOP) {
-					spi_ssd1306_clear_line(shiftLine);
-					spi_ssd1306_text_xy(devName, 1, shiftLine);
-				}
-#endif
 			break;
 			case msg_out:
 				tmr_out = getTimer(cikl_out);

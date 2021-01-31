@@ -83,7 +83,6 @@ typedef enum {
 	msg_mpuAllRead,
 	msg_mpuAllReady,
 	msg_mpuReadInterruptsStatus,
-	msg_shiftEvent,
 	msg_mkUdp,
 	msg_mkTcp,
 	msg_mkListen,
