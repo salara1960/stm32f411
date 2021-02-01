@@ -268,11 +268,13 @@ struct mallinfo mem_info;// = mallinfo();
 	uint8_t con_tcp = 0;
 
 	int32_t cnt_udp = 0;
+	int32_t cnt_tcp = 0;
 	uint32_t udp_pack_num = 0;
 	uint8_t en_udp = 0;
 	uint8_t en_tcp = 0;
 	int8_t usoc = -1;
 	int8_t tsoc = -1;
+
 
 	wiz_NetInfo gWIZNETINFO = {
 				.mac = {0x00, 0x08, 0xdc, 0x47, 0x47, 0x54},
@@ -334,8 +336,8 @@ struct mallinfo mem_info;// = mallinfo();
 	static char *socStatus(int code)
 	{
 		switch (code) {
-			case SOCK_ERROR://            0
-				return "Ok";
+			case SOCK_CLOSED://            0x00
+				return "Closed";
 			case SOCKERR_SOCKNUM://       (SOCK_ERROR - 1)     ///< Invalid socket number
 				return "Invalid socket number";
 			case SOCKERR_SOCKOPT://       (SOCK_ERROR - 2)     ///< Invalid socket option
@@ -366,6 +368,8 @@ struct mallinfo mem_info;// = mallinfo();
 				return "Listen";
 			case SOCK_ESTABLISHED://             0x17
 				return "Connected";
+			case SOCK_FIN_WAIT://                0x18
+				return "Disconnected";
 			case SOCK_CLOSING://                 0x1A
 				return "Socket closed";
 			case SOCK_CLOSE_WAIT://              0x1C
@@ -826,22 +830,19 @@ char *uk, *uke;
 		en_udp = 1;
 	} else if (strstr(stx, "udp_off") != NULL) {
 		en_udp = 0;
-		if (usoc == udpSOC) {
-			close(udpSOC);
-			usoc = -1;
-			cnt_udp = 0;
-			udp_pack_num = 0;
-		}
+		if (usoc == udpSOC) close(udpSOC);
+		usoc = -1;
+		cnt_udp = 0;
+		udp_pack_num = 0;
 	}
 	else if (strstr(stx, "tcp_on") != NULL) {
 		en_tcp = 1;
 	} else if (strstr(stx, "tcp_off") != NULL) {
 		en_tcp = 0;
-		if (tsoc == tcpSOC) {
-			close(tcpSOC);
-			tsoc = -1;
-			con_tcp = 0;
-		}
+		if (tsoc == tcpSOC) close(tcpSOC);
+		tsoc = -1;
+		cnt_tcp = 0;
+		con_tcp = 0;
 	}
 #endif
 	else if (strstr(stx, "jtune_on") != NULL) {//key_100
@@ -1189,13 +1190,6 @@ int main(void)
 #endif
 
 
-#ifdef SET_IRED
-    HAL_GPIO_WritePin(irLED_GPIO_Port, irLED_Pin, GPIO_PIN_SET);
-	uint32_t tmr_ired = 0;
-	enIntIRED();
-#endif
-
-
 #ifdef SET_NET
 
 	//reset device
@@ -1246,7 +1240,7 @@ int main(void)
 
 	int8_t stat_tcp = SOCKERR_SOCKCLOSED;
 	uint8_t cliIP[4] = {0};
-	uint8_t statSR;
+	uint8_t statSR = 0;
 
 #endif
 
@@ -1261,6 +1255,14 @@ int main(void)
     HAL_TIM_Base_Start_IT(&htim2);
     //
     //---------------------------------------
+
+
+#ifdef SET_IRED
+    HAL_GPIO_WritePin(irLED_GPIO_Port, irLED_Pin, GPIO_PIN_SET);
+	uint32_t tmr_ired = 0;
+	enIntIRED();
+#endif
+
 
 	portHMC = &hi2c1;
 	xyz = (xyz_t *)&magBuf[0];
@@ -1345,6 +1347,33 @@ int main(void)
 						case key_ch: putMsg(msg_rst); break;//rst
 
 						case key_eq: tmr_out = getTimer(_1ms); break;//out
+
+						case key_left://udp_on / udp_off
+							en_udp++; en_udp &= 1;
+							if (!en_udp) {
+								if (usoc == udpSOC) close(udpSOC);
+								usoc = -1;
+								cnt_udp = 0;
+								udp_pack_num = 0;
+							}
+						break;
+						case key_right://tcp_on / tcp_off
+						{
+							en_tcp++; en_tcp &= 1;
+							if (!en_tcp) {
+								if (tsoc == tcpSOC) {
+									if (con_tcp) disconnect(tcpSOC);
+									close(tcpSOC);
+								}
+								tsoc = -1;
+								con_tcp = 0;
+	#ifdef SET_NET_DEBUG
+								uint8_t sta = getSn_SR(tcpSOC);
+								Report(NULL, 0, "\t[%s] (%u) Device closed tcp server\r\n", socStatus(sta), sta);
+	#endif
+							}
+						}
+						break;
 					}
 				}
 			}
@@ -1437,16 +1466,14 @@ int main(void)
 		    	} else {
 		    		statSR = getSn_SR(tcpSOC);
 		    		if (statSR == SOCK_CLOSE_WAIT) {
-		    			if (tsoc == tcpSOC) {
-		    				close(tcpSOC);
-		    				tsoc = -1;
-		    				con_tcp = 0;
+		    			if (tsoc == tcpSOC) close(tcpSOC);
+		    			tsoc = -1;
+		    			con_tcp = 0;
 	#ifdef SET_NET_DEBUG
-		    				Report(NULL, 0, "\t[%s] (%d) Disconnect client:  %d.%d.%d.%d\r\n",
+		    			Report(NULL, 0, "\t[%s] (%d) Disconnect client:  %d.%d.%d.%d\r\n",
 		    								socStatus(statSR), statSR,
 											cliIP[0], cliIP[1], cliIP[2], cliIP[3]);
 	#endif
-		    			}
 		    		}
 		    		if (con_tcp) {
 		    			int32_t rlen = recv(tcpSOC, (uint8_t *)tcpTmp, 64);
