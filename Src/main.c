@@ -155,7 +155,11 @@ volatile uint8_t ledValue = 0;
 uint32_t next = 0;
 uint32_t msBegin = 0, msCnt = 0;
 const uint32_t msPeriod = _100ms;
-//
+/*
+#define max_prndata 8
+uint8_t wr_data = 0, rd_data = 0;
+print_data_t prndata[max_prndata] = {NULL};
+*/
 int siCmd = 0;
 uint32_t tx_icnt = 0, rx_icnt = 0;
 //
@@ -377,6 +381,58 @@ struct mallinfo mem_info;// = mallinfo();
 			default : return "Unkown";
 		}
 	}
+	//--------------------------------------------------------------------------
+	void getPhyStatus()
+	{
+		uint8_t reg = getPHYCFGR();
+
+		char tp[64] = {0};
+		char tp0[32] = {0};
+		strcpy(tp, "LAN :");
+		strcpy(tp0, "Lan:");
+		if (reg & PHYCFGR_LNK_ON) {
+			strcat(tp, " LinkUp");
+	#ifdef SET_OLED_SPI
+			strcat(tp0, "Up");
+	#endif
+		} else {
+			strcat(tp, " LinkDown");
+	#ifdef SET_OLED_SPI
+			strcat(tp0, "Down");
+	#endif
+		}
+		if (reg & PHYCFGR_SPD_100) {
+			strcat(tp, " 100Mpbs");
+	#ifdef SET_OLED_SPI
+			strcat(tp0, " 100");
+	#endif
+		} else {
+			strcat(tmp, " 10Mpbs");
+	#ifdef SET_OLED_SPI
+			strcat(tp0, " 10");
+	#endif
+		}
+		if (reg & PHYCFGR_DPX_FULL) {
+			strcat(tp, " FullDuplex");
+	#ifdef SET_OLED_SPI
+			strcat(tp0, "Full");
+	#endif
+		} else {
+			strcat(tp, " HalfDuplex");
+	#ifdef SET_OLED_SPI
+			strcat(tp0, "Half");
+	#endif
+		}
+		Report(NULL, 0, "\t%s\r\n", tp);
+
+	#ifdef SET_OLED_SPI
+	    spi_ssd1306_clear_line(8);
+	    spi_ssd1306_text_xy(tp0, 1, 8);
+	#endif
+
+	}
+	//--------------------------------------------------------------------------
+
 #endif
 	//--------------------------------------------------------------------------
 /* USER CODE END PV */
@@ -426,6 +482,49 @@ uint32_t getSec()
 {
 	return seconds;
 }
+//-------------------------------------------------------------------------------------------
+/*
+void putData(char *uk)
+{
+	prndata[wr_data++].body = uk;
+	wr_data &= max_prndata - 1;
+	//
+	//putMsg(msg_prnData);
+}
+//-------------------------------------------------------------------------------------------
+void printData()
+{
+
+	char *uk = prndata[rd_data].body;
+	if (!uk || !txDoneFlag) return;
+
+	strcpy(txData, uk);
+	free(uk);
+	int len = strlen(txData);
+	prndata[rd_data].body = NULL;
+	rd_data++;
+	rd_data &= max_prndata - 1;
+
+	//
+	//if (txDoneFlag) {
+		//txDoneFlag = 0;
+		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)txData, len);
+
+		while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
+			if (HAL_UART_GetState(&huart1) == HAL_UART_STATE_BUSY_RX) break;
+		//			//HAL_Delay(1);
+		}
+	//}
+
+#ifdef SET_NET
+	if (con_tcp) {
+		send(tcpSOC, (uint8_t *)&txData[0], len);
+	}
+#endif
+
+
+}
+*/
 //-------------------------------------------------------------------------------------------
 void putMsg(evt_t evt)
 {
@@ -571,10 +670,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 		if (rxByte == '\n') {//end of line
 			rxData[(rx_uk + 1) & 0x7f] = '\0';
 			strcpy(stx, rxData);//, rx_uk + 1);
-			putMsg(msg_rxDone);
+			//putMsg(msg_rxDone);
 
 			rx_uk = 0;
 			memset(rxData, 0, sizeof(rxData));
+			putMsg(msg_rxDone);
 		} else rx_uk++;
 
 		HAL_UART_Receive_IT(huart, (uint8_t *)&rxByte, 1);
@@ -681,11 +781,8 @@ size_t len = MAX_UART_BUF;
 int dl = 0;
 char *buff = &txData[0];
 
-	if (!txDoneFlag) return;
-
 //	char *buff = (char *)calloc(1, len);//pvPortMalloc(len);//vPortFree(buff);
 //	if (buff) {
-		txDoneFlag = 0;
 
 		if (addTime) dl = sec_to_str_time(buff);
 		if (tag) dl += sprintf(buff+strlen(buff), "[%s] ", tag);
@@ -694,21 +791,30 @@ char *buff = &txData[0];
 		vsnprintf(buff + dl, len - dl, fmt, args);
 		va_end(args);
 
-		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)buff, strlen(buff));
+		//putData(buff);
 
-		/*while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
-				if (HAL_UART_GetState(&huart1) == HAL_UART_STATE_BUSY_RX) break;
+
+		//if (txDoneFlag) {
+		//	txDoneFlag = 0;
+		//	HAL_UART_Transmit_DMA(&huart1, (uint8_t *)buff, strlen(buff));
+			HAL_UART_Transmit(&huart1, (uint8_t *)buff, strlen(buff), 1000);
+
+			//while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
+			//	if (HAL_UART_GetState(&huart1) == HAL_UART_STATE_BUSY_RX) break;
 				//HAL_Delay(1);
-		}*/
-
-//		free(buff);//vPortFree(buff);
+			//}
+		//}
 
 #ifdef SET_NET
 		if (con_tcp) {
 			send(tcpSOC, (uint8_t *)buff, strlen(buff));
 		}
 #endif
+
+//		free(buff);//vPortFree(buff);
+
 //	}
+
 }
 //------------------------------------------------------------------------------------------
 void set_Date(time_t ep)
@@ -809,6 +915,7 @@ void procCompas()
 }
 //------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------
 void ackParse()
 {
 char *uk, *uke;
@@ -834,8 +941,7 @@ char *uk, *uke;
 		usoc = -1;
 		cnt_udp = 0;
 		udp_pack_num = 0;
-	}
-	else if (strstr(stx, "tcp_on") != NULL) {
+	} else if (strstr(stx, "tcp_on") != NULL) {
 		en_tcp = 1;
 	} else if (strstr(stx, "tcp_off") != NULL) {
 		en_tcp = 0;
@@ -843,6 +949,8 @@ char *uk, *uke;
 		tsoc = -1;
 		cnt_tcp = 0;
 		con_tcp = 0;
+	} else if (strstr(stx, "lan") != NULL) {
+		getPhyStatus();
 	}
 #endif
 	else if (strstr(stx, "jtune_on") != NULL) {//key_100
@@ -1053,7 +1161,9 @@ void toDisplay(char *line)
 	sprintf(line+strlen(line), "  pres:%.2fmm\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
 	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
 	sprintf(line+strlen(line), " azimut:%.2f%c\n", compData.angleHMC, gradus);
-	if (ip_assigned) sprintf(line+strlen(line), " %s", localIP);
+	#ifdef SET_NET
+		if (ip_assigned) sprintf(line+strlen(line), " %s", localIP);
+	#endif
 	spi_ssd1306_text_xy(line, 2, 2);
 #elif defined(SET_IPS)
 	if (!devError) sprintf(line+strlen(line), "    Vcc:%.3fv\n", VccF);
@@ -1066,7 +1176,9 @@ void toDisplay(char *line)
 	sprintf(line+strlen(line), "   pres:%.2fmm\n   temp:%.2f^\n", sensors.bmx_pres, sensors.bmx_temp);
 	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "   humi:%.2f%%\n", sensors.bmx_humi);
 	sprintf(line+strlen(line), "   azimut:%.2f^\n   temp2:%.2f^\n", compData.angleHMC, compData.tempHMC);
-	if (ip_assigned) sprintf(line+strlen(line), "%s | %d", localIP, (int)cnt_udp);
+	#ifdef SET_NET
+		if (ip_assigned) sprintf(line+strlen(line), "%s | %d", localIP, (int)cnt_udp);
+	#endif
 	ST7789_WriteString(0, tFont.height + (tFont.height * 0.75), line, tFont, WHITE, BLACK);
 #endif
 //
@@ -1114,6 +1226,9 @@ int main(void)
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
 
+
+  //wr_data = rd_data = 0;
+  //for (int i = 0; i < max_prndata; i++) prndata[i].body = NULL;
 
 #if defined(SET_OLED_SPI) || defined(SET_IPS)
     sprintf(devName, "Speed:%lu", huart1.Init.BaudRate);
@@ -1286,11 +1401,15 @@ int main(void)
 
 
 #ifdef SET_NET
+
+    //getPhyStatus();
+
     en_udp = 1;
     if (usoc < 0) putMsg(msg_mkUdp);
     HAL_Delay(10);
     en_tcp = 1;
     if (tsoc < 0) putMsg(msg_mkTcp);
+
 #endif
 
 
@@ -1299,6 +1418,7 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1)  {
+
 
 #ifdef SET_IRED
 		if (!tmr_ired) {
@@ -1347,7 +1467,7 @@ int main(void)
 						case key_ch: putMsg(msg_rst); break;//rst
 
 						case key_eq: tmr_out = getTimer(_1ms); break;//out
-
+#ifdef SET_NET
 						case key_left://udp_on / udp_off
 							en_udp++; en_udp &= 1;
 							if (!en_udp) {
@@ -1374,6 +1494,10 @@ int main(void)
 							}
 						}
 						break;
+						case key_sp://get PHY status register
+							getPhyStatus();
+						break;
+#endif
 					}
 				}
 			}
@@ -1388,8 +1512,15 @@ int main(void)
 		}
 #endif
 
+
 		switch (getMsg()) {
 
+			/*case msg_prnData:
+				//
+				printData();
+				//
+			break;*/
+#ifdef SET_NET
 			case msg_mkUdp:
 				if (usoc < 0) {
 					usoc = socket(udpSOC, Sn_MR_UDP, udpPort, netFlag);
@@ -1400,9 +1531,9 @@ int main(void)
 					tsoc = socket(tcpSOC, Sn_MR_TCP, tcpPort, netFlag);
 					if (tsoc == tcpSOC) {
 						stat_tcp = listen(tcpSOC);
-#ifdef SET_NET_DEBUG
+	#ifdef SET_NET_DEBUG
 						Report(NULL, 0, "\tTcp socket create OK. Listen (%d) tcp client...\r\n", stat_tcp);
-#endif
+	#endif
 						putMsg(msg_mkListen);
 					}
 				}
@@ -1417,9 +1548,9 @@ int main(void)
 						getsockopt(tcpSOC, SO_DESTIP, &cliIP);
 						con_tcp = 1;
 						memset(tcpBuf, 0, sizeof(tcpBuf));
-#ifdef SET_NET_DEBUG
+	#ifdef SET_NET_DEBUG
 						Report(NULL, 0, "\t[%s] Connect to client:  %d.%d.%d.%d\r\n", socStatus(statSR), cliIP[0], cliIP[1], cliIP[2], cliIP[3]);
-#endif
+	#endif
 						/*en_udp = 0;
 						if (usoc == udpSOC) {
 							close(udpSOC);
@@ -1432,13 +1563,14 @@ int main(void)
 					close(tcpSOC);
 					tsoc = -1;
 					con_tcp = 0;
-#ifdef SET_NET_DEBUG
+	#ifdef SET_NET_DEBUG
 					Report(NULL, 0, "\t[%s] Socket error %d\r\n", socStatus(statSR), statSR);
-#endif
+	#endif
 				} else {
 					putMsg(msg_mkListen);
 				}
 			break;
+#endif
 		    case msg_adcReady:
 		    {
 		    	adcValue = (uint16_t)HAL_ADC_GetValue(portADC) & 0xfff;// * 0.80586;
@@ -1792,6 +1924,7 @@ int main(void)
 				//STROB_UP();
 			break;
 		}
+
 
     /* USER CODE END WHILE */
 
@@ -2198,7 +2331,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 230400;//115200;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;

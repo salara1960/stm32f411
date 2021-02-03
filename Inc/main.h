@@ -86,6 +86,7 @@ typedef enum {
 	msg_mkUdp,
 	msg_mkTcp,
 	msg_mkListen,
+	msg_prnData,
 	msg_none
 } evt_t;
 
@@ -118,6 +119,15 @@ typedef struct {
 	float tempHMC;
 } compas_data_t;
 #pragma pack(pop)
+
+
+#pragma pack(push,1)
+typedef struct {
+	char *body;
+} print_data_t;
+#pragma pack(pop)
+
+
 
 volatile uint32_t tik;
 int siCmd;
