@@ -155,11 +155,15 @@ volatile uint8_t ledValue = 0;
 uint32_t next = 0;
 uint32_t msBegin = 0, msCnt = 0;
 const uint32_t msPeriod = _100ms;
-/*
+
+/************************************************/
 #define max_prndata 8
-uint8_t wr_data = 0, rd_data = 0;
+volatile uint8_t cnt_data = 0;
+volatile uint8_t wr_data = 0;
+volatile uint8_t rd_data = 0;
 print_data_t prndata[max_prndata] = {NULL};
-*/
+/************************************************/
+
 int siCmd = 0;
 uint32_t tx_icnt = 0, rx_icnt = 0;
 //
@@ -216,7 +220,8 @@ uint32_t cikl_out = _10s;
 #endif
 
 
-struct mallinfo mem_info;// = mallinfo();
+struct mallinfo mem_info;
+
 
 #ifdef SET_IRED
 
@@ -308,6 +313,13 @@ struct mallinfo mem_info;// = mallinfo();
 	void W5500_WriteBuff(uint8_t* buff, uint16_t len)
 	{
 	    if (HAL_SPI_Transmit(&hspi4, buff, len, HAL_MAX_DELAY) != HAL_OK) devError |= devNet;
+
+	    /*if (HAL_SPI_Transmit_DMA(&hspi4, buff, len) != HAL_OK) devError |= devNet;
+	    while (1) {
+	    	HAL_SPI_StateTypeDef stat = HAL_SPI_GetState(&hspi4);
+	    	if ((stat == HAL_SPI_STATE_BUSY_RX) || (stat == HAL_SPI_STATE_READY)) break;
+	    }*/
+
 	}
 	//--------------------------------------------------------------------------
 	uint8_t W5500_ReadByte()
@@ -483,48 +495,47 @@ uint32_t getSec()
 	return seconds;
 }
 //-------------------------------------------------------------------------------------------
-/*
+/**/
 void putData(char *uk)
 {
+
 	prndata[wr_data++].body = uk;
 	wr_data &= max_prndata - 1;
+	cnt_data++;
+
 	//
-	//putMsg(msg_prnData);
+	putMsg(msg_prnData);
 }
 //-------------------------------------------------------------------------------------------
 void printData()
 {
 
-	char *uk = prndata[rd_data].body;
-	if (!uk || !txDoneFlag) return;
+	if (!cnt_data) return;
 
+	if (!txDoneFlag) {
+		//putMsg(msg_prnData);
+		return;
+	}
+
+	char *uk = prndata[rd_data].body;
 	strcpy(txData, uk);
 	free(uk);
+	if (cnt_data) cnt_data--;
 	int len = strlen(txData);
 	prndata[rd_data].body = NULL;
 	rd_data++;
 	rd_data &= max_prndata - 1;
 
-	//
-	//if (txDoneFlag) {
-		//txDoneFlag = 0;
-		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)txData, len);
-
-		while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
-			if (HAL_UART_GetState(&huart1) == HAL_UART_STATE_BUSY_RX) break;
-		//			//HAL_Delay(1);
-		}
-	//}
+	txDoneFlag = 0;
+	//HAL_UART_Transmit(&huart1, (uint8_t *)txData, len, 1000);
+	HAL_UART_Transmit_DMA(&huart1, (uint8_t *)txData, len);
 
 #ifdef SET_NET
-	if (con_tcp) {
-		send(tcpSOC, (uint8_t *)&txData[0], len);
-	}
+	if (con_tcp) send(tcpSOC, (uint8_t *)&txData[0], len);
 #endif
 
-
 }
-*/
+/**/
 //-------------------------------------------------------------------------------------------
 void putMsg(evt_t evt)
 {
@@ -779,10 +790,10 @@ void Report(const char *tag, unsigned char addTime, const char *fmt, ...)
 va_list args;
 size_t len = MAX_UART_BUF;
 int dl = 0;
-char *buff = &txData[0];
+//char *buff = &txData[0];
 
-//	char *buff = (char *)calloc(1, len);//pvPortMalloc(len);//vPortFree(buff);
-//	if (buff) {
+	char *buff = (char *)calloc(1, len);//pvPortMalloc(len);//vPortFree(buff);
+	if (buff) {
 
 		if (addTime) dl = sec_to_str_time(buff);
 		if (tag) dl += sprintf(buff+strlen(buff), "[%s] ", tag);
@@ -791,19 +802,18 @@ char *buff = &txData[0];
 		vsnprintf(buff + dl, len - dl, fmt, args);
 		va_end(args);
 
-		//putData(buff);
+		putData(buff);
 
-
-		//if (txDoneFlag) {
-		//	txDoneFlag = 0;
-		//	HAL_UART_Transmit_DMA(&huart1, (uint8_t *)buff, strlen(buff));
-			HAL_UART_Transmit(&huart1, (uint8_t *)buff, strlen(buff), 1000);
+		/*if (txDoneFlag) {
+			txDoneFlag = 0;
+			HAL_UART_Transmit_DMA(&huart1, (uint8_t *)buff, strlen(buff));
+			//HAL_UART_Transmit(&huart1, (uint8_t *)buff, strlen(buff), 1000);
 
 			//while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
 			//	if (HAL_UART_GetState(&huart1) == HAL_UART_STATE_BUSY_RX) break;
-				//HAL_Delay(1);
+			//	//HAL_Delay(1);
 			//}
-		//}
+		}
 
 #ifdef SET_NET
 		if (con_tcp) {
@@ -812,8 +822,8 @@ char *buff = &txData[0];
 #endif
 
 //		free(buff);//vPortFree(buff);
-
-//	}
+*/
+	}
 
 }
 //------------------------------------------------------------------------------------------
@@ -1134,7 +1144,8 @@ switch (outMode) {
 
 	if (outDebug) {
 		mem_info = mallinfo();
-		sprintf(tmp+strlen(tmp), "\r\n(noused=%d #freeChunk=%d #freeBlk=%d #mapReg=%d busy=%d max_busy=%d #freedBlk=%d used=%d free=%d top=%d)",
+		sprintf(tmp+strlen(tmp), "\r\n(cnt_data=%u | noused=%d #freeChunk=%d #freeBlk=%d #mapReg=%d busy=%d max_busy=%d #freedBlk=%d used=%d free=%d top=%d)",
+			cnt_data,
 			mem_info.arena,// Non-mmapped space allocated (bytes)
 			mem_info.ordblks,// Number of free chunks
 			mem_info.smblks,// Number of free fastbin blocks
@@ -1515,11 +1526,11 @@ int main(void)
 
 		switch (getMsg()) {
 
-			/*case msg_prnData:
+			case msg_prnData:
 				//
 				printData();
 				//
-			break;*/
+			break;
 #ifdef SET_NET
 			case msg_mkUdp:
 				if (usoc < 0) {
@@ -1647,6 +1658,8 @@ int main(void)
 		    		//
 		    	}
 		    	//
+		    	//printData();
+		    	//
 		    break;
 		    case msg_sec:
 		    	led_OnOff();
@@ -1688,8 +1701,10 @@ int main(void)
 		    					}
 	#ifdef SET_OLED_SPI
 		    					sprintf(line, "   udp: %d", (int)cnt_udp);
+		    					//sprintf(line, "  cnt_data: %u", cnt_data);
 		    					spi_ssd1306_clear_line(8);
 		    					spi_ssd1306_text_xy(line, 1, 8);
+		    					//Report(NULL, 0, "\t%s", udpText);
 	#endif
 		    					if (stat_udp <= 0) {
 		    						if (cnt_udp > 0) cnt_udp--;
@@ -1925,6 +1940,9 @@ int main(void)
 			break;
 		}
 
+		//
+		//printData();
+		//
 
     /* USER CODE END WHILE */
 
