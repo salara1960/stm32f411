@@ -57,9 +57,9 @@
   например :
 
 ```
-[1] Message from device=W5500 ip=192.168.0.200
-[2] Message from device=W5500 ip=192.168.0.200
-[3] Message from device=W5500 ip=192.168.0.200
+[1] Message from device=W5500 ip=192.168.0.150
+[2] Message from device=W5500 ip=192.168.0.150
+[3] Message from device=W5500 ip=192.168.0.150
 ```
 
 * Устройство имеет в своем составе tcp сервер, "слушает" он на порту 8008 и полностью дублирует

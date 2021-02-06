@@ -48,7 +48,9 @@ extern "C" {
 #include "ssd1306.h"
 #include "cJSON.h"
 #include "IRremote.h"
-#include "st7789.h"
+#ifdef SET_IPS
+	#include "st7789.h"
+#endif
 #ifdef SET_NET
 	#include "socket.h"
 	#include "dhcp.h"

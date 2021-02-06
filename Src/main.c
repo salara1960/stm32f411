@@ -158,6 +158,7 @@ const uint32_t msPeriod = _100ms;
 
 /************************************************/
 #define max_prndata 8
+uint32_t tmr_prn = 0;
 volatile uint8_t cnt_data = 0;
 volatile uint8_t wr_data = 0;
 volatile uint8_t rd_data = 0;
@@ -178,7 +179,14 @@ uint8_t outDebug = 0;
 	char line[MAX_TMP_SIZE] = {0};
 	uint32_t spi_cnt;
 	char devName[32] = {0};//" - STM32F411 -  ";
+
+	#ifdef SET_IPS
+		const FontDef *fntKey = &Font_16x26;
+	    const FontDef *tFont = &Font_11x18;
+	#endif
 #endif
+
+
 
 #ifdef SET_BMx280
 	I2C_HandleTypeDef *portBMP = NULL;
@@ -399,49 +407,22 @@ struct mallinfo mem_info;
 		uint8_t reg = getPHYCFGR();
 
 		char tp[64] = {0};
-		char tp0[32] = {0};
-		strcpy(tp, "LAN :");
-		strcpy(tp0, "Lan:");
-		if (reg & PHYCFGR_LNK_ON) {
-			strcat(tp, " LinkUp");
-	#ifdef SET_OLED_SPI
-			strcat(tp0, "Up");
-	#endif
-		} else {
-			strcat(tp, " LinkDown");
-	#ifdef SET_OLED_SPI
-			strcat(tp0, "Down");
-	#endif
-		}
-		if (reg & PHYCFGR_SPD_100) {
-			strcat(tp, " 100Mpbs");
-	#ifdef SET_OLED_SPI
-			strcat(tp0, " 100");
-	#endif
-		} else {
-			strcat(tmp, " 10Mpbs");
-	#ifdef SET_OLED_SPI
-			strcat(tp0, " 10");
-	#endif
-		}
-		if (reg & PHYCFGR_DPX_FULL) {
-			strcat(tp, " FullDuplex");
-	#ifdef SET_OLED_SPI
-			strcat(tp0, "Full");
-	#endif
-		} else {
-			strcat(tp, " HalfDuplex");
-	#ifdef SET_OLED_SPI
-			strcat(tp0, "Half");
-	#endif
-		}
-		Report(NULL, 0, "\t%s\r\n", tp);
+		strcpy(tp, "Lan:");
+		if (reg & PHYCFGR_LNK_ON) strcat(tp, "Up");
+		                     else strcat(tp, "Down");
 
-	#ifdef SET_OLED_SPI
-	    spi_ssd1306_clear_line(8);
-	    spi_ssd1306_text_xy(tp0, 1, 8);
-	#endif
+		if (reg & PHYCFGR_SPD_100) strcat(tp, " 100");
+		                      else strcat(tp, " 10");
 
+		if (reg & PHYCFGR_DPX_FULL) strcat(tp, "Full");
+		                       else strcat(tp, "Half");
+
+#ifdef SET_OLED_SPI
+		spi_ssd1306_clear_line(8);
+		spi_ssd1306_text_xy(tp, 1, 8);
+#endif
+
+    	Report(NULL, 0, "\t%s\r\n", tp);
 	}
 	//--------------------------------------------------------------------------
 
@@ -503,8 +484,9 @@ void putData(char *uk)
 	wr_data &= max_prndata - 1;
 	cnt_data++;
 
+	tmr_prn = getTimer(2);
 	//
-	putMsg(msg_prnData);
+	//putMsg(msg_prnData);
 }
 //-------------------------------------------------------------------------------------------
 void printData()
@@ -681,7 +663,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 		if (rxByte == '\n') {//end of line
 			rxData[(rx_uk + 1) & 0x7f] = '\0';
 			strcpy(stx, rxData);//, rx_uk + 1);
-			//putMsg(msg_rxDone);
 
 			rx_uk = 0;
 			memset(rxData, 0, sizeof(rxData));
@@ -1190,7 +1171,7 @@ void toDisplay(char *line)
 	#ifdef SET_NET
 		if (ip_assigned) sprintf(line+strlen(line), "%s | %d", localIP, (int)cnt_udp);
 	#endif
-	ST7789_WriteString(0, tFont.height + (tFont.height * 0.75), line, tFont, WHITE, BLACK);
+	ST7789_WriteString(0, tFont->height + (tFont->height * 0.75), line, *tFont, WHITE, BLACK);
 #endif
 //
 }
@@ -1277,14 +1258,14 @@ int main(void)
     ST7789_Reset();
     ST7789_Init();
 
-    FontDef fntKey = Font_16x26;
-    FontDef tFont = Font_11x18;
+    //fntKey = &Font_16x26;
+    //tFont = &Font_11x18;
 
     //uint8_t on_ips = 0;
     //ipsOn(on_ips);
 
-    ST7789_Fill(0, 0, ST7789_WIDTH - 1, fntKey.height, WHITE);
-    ST7789_Fill(0, ST7789_WIDTH - fntKey.height, ST7789_WIDTH - 1, ST7789_HEIGHT - 1, YELLOW);
+    ST7789_Fill(0, 0, ST7789_WIDTH - 1, fntKey->height, WHITE);
+    ST7789_Fill(0, ST7789_WIDTH - fntKey->height, ST7789_WIDTH - 1, ST7789_HEIGHT - 1, YELLOW);
 
 #endif
 
@@ -1371,6 +1352,12 @@ int main(void)
 #endif
 
 
+#ifdef SET_IRED
+    HAL_GPIO_WritePin(irLED_GPIO_Port, irLED_Pin, GPIO_PIN_RESET);
+	uint32_t tmr_ired = 0;
+	enIntIRED();
+#endif
+
     //---------------------------------------
 	//"start" ADC interrupt
 	portADC = &hadc1;
@@ -1381,13 +1368,6 @@ int main(void)
     HAL_TIM_Base_Start_IT(&htim2);
     //
     //---------------------------------------
-
-
-#ifdef SET_IRED
-    HAL_GPIO_WritePin(irLED_GPIO_Port, irLED_Pin, GPIO_PIN_SET);
-	uint32_t tmr_ired = 0;
-	enIntIRED();
-#endif
 
 
 	portHMC = &hi2c1;
@@ -1454,7 +1434,7 @@ int main(void)
 				if (kid == -1) sprintf(line, "CODE:%08lX", results.value);
 				          else sprintf(line, "irKEY: %s", keyAll[kid].name);
 				//ST7789_Fill(0, ST7789_WIDTH - fntKey.height, ST7789_WIDTH - 1, ST7789_HEIGHT - 1, YELLOW);
-				ST7789_WriteString(0, ST7789_WIDTH - fntKey.height, mkLineCenter(line, ST7789_WIDTH / fntKey.width), fntKey, MAGENTA, YELLOW);
+				ST7789_WriteString(0, ST7789_WIDTH - fntKey->height, mkLineCenter(line, ST7789_WIDTH / fntKey->width), *fntKey, MAGENTA, YELLOW);
 #endif
 				if (kid != -1) {
 					switch (kid) {
@@ -1523,14 +1503,18 @@ int main(void)
 		}
 #endif
 
+		if (chkTimer(tmr_prn)) {
+			printData();
+			tmr_prn = getTimer(2);
+		}
 
 		switch (getMsg()) {
 
-			case msg_prnData:
+			//case msg_prnData:
 				//
-				printData();
+			//	printData();
 				//
-			break;
+			//break;
 #ifdef SET_NET
 			case msg_mkUdp:
 				if (usoc < 0) {
@@ -1673,11 +1657,15 @@ int main(void)
 		    	toDisplay(line);
 #elif defined(SET_IPS)
 		    	//print time
-		    	ST7789_WriteString(0, 0, mkLineCenter(line, ST7789_WIDTH / fntKey.width), fntKey, RED, WHITE);
+		    	ST7789_WriteString(0, 0, mkLineCenter(line, ST7789_WIDTH / fntKey->width), *fntKey, RED, WHITE);
 		    	toDisplay(line);
 		    	//netChipID
-		    	sprintf(line, "chip : %s", netChipID);
-		    	ST7789_WriteString(0, ST7789_WIDTH - fntKey.height, mkLineCenter(line, ST7789_WIDTH / fntKey.width), fntKey, MAGENTA, YELLOW);
+		    	if (!con_tcp) {
+		    		sprintf(line, "chip : %s", netChipID);
+		    	} else {
+		    		sprintf(line, " %d.%d.%d.%d", cliIP[0], cliIP[1], cliIP[2], cliIP[3]);
+		    	}
+		    	ST7789_WriteString(0, ST7789_WIDTH - fntKey->height, mkLineCenter(line, ST7789_WIDTH / fntKey->width), *fntKey, MAGENTA, YELLOW);
 #endif
 		    	//
 #ifdef SET_NET

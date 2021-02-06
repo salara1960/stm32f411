@@ -705,7 +705,7 @@ void ST7789_TearEffect(uint8_t tear)
  * @brief A Simple test function for ST7789
  * @param  none
  * @return  none
- */
+ *
 void ST7789_Test(void)
 {
 	ST7789_Fill_Color(WHITE);
@@ -774,17 +774,18 @@ void ST7789_Test(void)
 	ST7789_DrawFilledTriangle(30, 30, 30, 70, 60, 40, WHITE);
 	HAL_Delay(1000);
 
-/*
+
 	//	If FLASH cannot storage anymore datas, please delete codes below.
-	ST7789_Fill_Color(WHITE);
-	uint16_t x = (240 - 128)/2, y = (240 - 128)/2;
-	ST7789_DrawImage(x, y, 128, 128, (uint16_t *)saber);
-	//ST7789_DrawImage(0, 0, 240, 240, (uint16_t *)knky);
-	//ST7789_DrawImage(0, 0, 240, 240, (uint16_t *)tek);
-	//HAL_Delay(1000);
-	//ST7789_DrawImage(0, 0, 240, 240, (uint16_t *)adi1);
- */
+//	ST7789_Fill_Color(WHITE);
+//	uint16_t x = (240 - 128)/2, y = (240 - 128)/2;
+//	ST7789_DrawImage(x, y, 128, 128, (uint16_t *)saber);
+//	//ST7789_DrawImage(0, 0, 240, 240, (uint16_t *)knky);
+//	//ST7789_DrawImage(0, 0, 240, 240, (uint16_t *)tek);
+//	//HAL_Delay(1000);
+//	//ST7789_DrawImage(0, 0, 240, 240, (uint16_t *)adi1);
+
 }
+*/
 //-----------------------------------------------------------------------------------------
 char *mkLineCenter(char *str, uint16_t width)
 {
