@@ -17,10 +17,13 @@
 	#define SET_WITH_DMA
 #endif
 
+#define SET_COMPAS
 //#define SET_COMPAS_BLOCK
 
-#define SET_MPU
+#define SET_MPU6050
 //#define SET_MPU_INTERRUPT
+
+//#define SET_MPU9250
 
 #define SET_cJSON
 #ifdef SET_cJSON
@@ -30,9 +33,13 @@
 
 #define SET_IRED
 
-#define SET_NET
+//#define SET_NET
 #ifdef SET_NET
 	#define SET_NET_DEBUG
 #endif
+
+#define SET_BLE
+
+//#define SET_WIFI
 
 #endif /* APPLICATION_USER_HDR_H_ */

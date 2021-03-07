@@ -55,6 +55,13 @@ extern "C" {
 	#include "socket.h"
 	#include "dhcp.h"
 #endif
+#ifdef SET_BLE
+	#include "ble.h"
+#endif
+#ifdef SET_WIFI
+	#include "wifi.h"
+#endif
+
 
 /* USER CODE END Includes */
 
@@ -69,12 +76,14 @@ typedef enum {
 	msg_10ms,//msg_1ms,
 	msg_sec,
 	msg_rxDone,
+	msg_rxDoneBLE,
 	msg_rst,
 	msg_out,
 	msg_i2c,
 	msg_adcReady,
 	msg_startCompas,
 	msg_getCompas,
+	msg_startMPU,
 	msg_nextSens,
 	msg_rdyTest,
 	msg_rdyStat,
@@ -88,7 +97,7 @@ typedef enum {
 	msg_mkUdp,
 	msg_mkTcp,
 	msg_mkListen,
-	msg_prnData,
+	msg_wrBLE,
 	msg_none
 } evt_t;
 
@@ -147,7 +156,7 @@ compas_data_t compData;
 	uint8_t data_rdx[DATA_LENGTH];
 #endif
 
-#ifdef SET_MPU
+#if defined(SET_MPU6050) || defined(SET_MPU9250)
 	I2C_HandleTypeDef *portMPU;
 #endif
 
@@ -189,9 +198,18 @@ compas_data_t compData;
 //extern evt_t evt_fifo[MAX_FIFO_SIZE];
 //extern uint8_t rd_evt_adr, wr_evt_adr;
 
-#ifdef SET_NET
+#if defined(SET_NET) || defined(SET_WIFI)
 	SPI_HandleTypeDef *portNET;
 #endif
+
+
+#ifdef SET_BLE
+	UART_HandleTypeDef *blePort;
+	uint8_t ble_ack_wait;
+	uint8_t con_ble;
+#endif
+
+uint32_t snd_pack;
 
 /* USER CODE END ET */
 
@@ -226,13 +244,16 @@ void Error_Handler(void);
 #define iKEY_EXTI_IRQn EXTI0_IRQn
 #define NET_MOSI_Pin GPIO_PIN_1
 #define NET_MOSI_GPIO_Port GPIOA
-#define iADC_Pin GPIO_PIN_2
-#define iADC_GPIO_Port GPIOA
 #define NET_EXTI4_Pin GPIO_PIN_4
 #define NET_EXTI4_GPIO_Port GPIOA
 #define NET_EXTI4_EXTI_IRQn EXTI4_IRQn
 #define IRED_Pin GPIO_PIN_5
 #define IRED_GPIO_Port GPIOA
+#define iADC_Pin GPIO_PIN_6
+#define iADC_GPIO_Port GPIOA
+#define WIFI_BUSY_Pin GPIO_PIN_7
+#define WIFI_BUSY_GPIO_Port GPIOA
+#define WIFI_BUSY_EXTI_IRQn EXTI9_5_IRQn
 #define OLED_DC_Pin GPIO_PIN_0
 #define OLED_DC_GPIO_Port GPIOB
 #define OLED_RST_Pin GPIO_PIN_1
@@ -251,6 +272,11 @@ void Error_Handler(void);
 #define OLED_MOSI_GPIO_Port GPIOB
 #define NET_MISO_Pin GPIO_PIN_11
 #define NET_MISO_GPIO_Port GPIOA
+#define BLE_EXTI3_Pin GPIO_PIN_3
+#define BLE_EXTI3_GPIO_Port GPIOB
+#define BLE_EXTI3_EXTI_IRQn EXTI3_IRQn
+#define BLE_RST_Pin GPIO_PIN_4
+#define BLE_RST_GPIO_Port GPIOB
 #define tLED_Pin GPIO_PIN_5
 #define tLED_GPIO_Port GPIOB
 #define ERR_LED_Pin GPIO_PIN_8
@@ -260,6 +286,7 @@ void Error_Handler(void);
 /* USER CODE BEGIN Private defines */
 
 #define IRRED_LED() HAL_GPIO_TogglePin(irLED_GPIO_Port, irLED_Pin);
+
 
 #define STROB_UP()   HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_SET);
 #define STROB_DOWN() HAL_GPIO_WritePin(STROB_GPIO_Port, STROB_Pin, GPIO_PIN_RESET);
@@ -278,11 +305,16 @@ void Error_Handler(void);
 
 
 
-#ifdef SET_NET
+#if defined(SET_NET) || defined(SET_WIFI)
 	#define CS_NET_SELECT() HAL_GPIO_WritePin(NET_CS_GPIO_Port, NET_CS_Pin, GPIO_PIN_RESET)
 	#define CS_NET_DESELECT() HAL_GPIO_WritePin(NET_CS_GPIO_Port, NET_CS_Pin, GPIO_PIN_SET)
 #endif
 
+
+#ifdef SET_BLE
+	#define BLE_RST_ON() HAL_GPIO_WritePin(BLE_RST_GPIO_Port, BLE_RST_Pin, GPIO_PIN_RESET)
+	#define BLE_RST_OFF() HAL_GPIO_WritePin(BLE_RST_GPIO_Port, BLE_RST_Pin, GPIO_PIN_SET)
+#endif
 
 /* USER CODE END Private defines */
 

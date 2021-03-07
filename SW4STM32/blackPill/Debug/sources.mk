@@ -16,6 +16,7 @@ C_DEPS :=
 # Every subdirectory with source files must be described here
 SUBDIRS := \
 Application/SW4STM32 \
+Application/User/BLE \
 Application/User \
 Application/User/NET/DHCP \
 Application/User/NET/DNS \

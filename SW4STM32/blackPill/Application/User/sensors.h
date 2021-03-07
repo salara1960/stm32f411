@@ -17,6 +17,10 @@
 #define htonl(x) \
     ((uint32_t)((x >> 24) | ((x >> 8) & 0xff00) | ((x << 8) & 0xff0000) | ((x << 24) & 0xff000000)))
 
+#ifndef M_PI
+	#define M_PI 3.14159265
+#endif
+
 
 #pragma pack(push,1)
     typedef struct {
@@ -46,7 +50,7 @@
 
 
 	//-----------------------------------------------
-#ifdef SET_MPU
+#ifdef SET_MPU6050
 
 	#define MPU_BUF_SIZE                   20 //7 * 2 = количество байт для чтения OUT-регистров
 
@@ -181,7 +185,7 @@
 	mpu_all_data_t mpu_all_data;
 	mpu_data_t mpu_data;
 
-	HAL_StatusTypeDef mpuID();
+	HAL_StatusTypeDef mpuChipID();
 	HAL_StatusTypeDef mpuInit();
 	HAL_StatusTypeDef mpuAllRead();
 	void mpuConvData();
@@ -192,13 +196,9 @@
 
 #endif
 	//-----------------------------------------------
-
+#ifdef SET_COMPAS
 
 	#define MAG_BUF_SIZE 9
-
-	#ifndef M_PI
-		#define M_PI 3.14159265
-	#endif
 
 	#define COPMAS_ADDRESS  0x0D//0x1E // this device only has one address
 	#define COPMAS_STAT_REG 6
@@ -221,7 +221,6 @@
 	#define OSR_64          0b11000000
 
 
-	result_t sensors;
 	uint8_t	magBuf[MAG_BUF_SIZE];
 	xyz_t *xyz;
 	uint8_t cStat;
@@ -234,7 +233,90 @@
 	HAL_StatusTypeDef COPMAS_GetAngle();
 	float COPMAS_CalcAngle();
 
+#endif
 
+//******************************************************************************************
+#ifdef SET_MPU9250
+
+	#define MPU_ID 0x71
+    //#define MPU_ID2 0x73
+	#define AKM_ID 0x48
+	#define MPU_STAT_REG 0x3a
+
+	typedef enum GyroRange_ {
+		GYRO_RANGE_250DPS = 0,
+		GYRO_RANGE_500DPS,
+		GYRO_RANGE_1000DPS,
+		GYRO_RANGE_2000DPS,
+	} GyroRange;
+
+	typedef enum AccelRange_ {
+		ACCEL_RANGE_2G = 0,
+		ACCEL_RANGE_4G,
+		ACCEL_RANGE_8G,
+		ACCEL_RANGE_16G,
+	} AccelRange;
+
+	typedef enum DLPFBandwidth_ {
+		DLPF_BANDWIDTH_184HZ = 0,
+		DLPF_BANDWIDTH_92HZ,
+		DLPF_BANDWIDTH_41HZ,
+		DLPF_BANDWIDTH_20HZ,
+		DLPF_BANDWIDTH_10HZ,
+		DLPF_BANDWIDTH_5HZ,
+	} DLPFBandwidth;
+
+	typedef enum SampleRateDivider_ {
+		LP_ACCEL_ODR_0_24HZ = 0,
+		LP_ACCEL_ODR_0_49HZ,
+		LP_ACCEL_ODR_0_98HZ,
+		LP_ACCEL_ODR_1_95HZ,
+		LP_ACCEL_ODR_3_91HZ,
+		LP_ACCEL_ODR_7_81HZ,
+		LP_ACCEL_ODR_15_63HZ,
+		LP_ACCEL_ODR_31_25HZ,
+		LP_ACCEL_ODR_62_50HZ,
+		LP_ACCEL_ODR_125HZ,
+		LP_ACCEL_ODR_250HZ,
+		LP_ACCEL_ODR_500HZ,
+	} SampleRateDivider;
+
+	#pragma pack(push,1)
+		typedef struct {
+			int16_t accel_x; //0x3B
+			int16_t accel_y; //0x3d
+			int16_t accel_z; //0x3f
+			int16_t temp;   //0x41
+			int16_t gyro_x;  //0x43
+			int16_t gyro_y;  //0x45
+			int16_t gyro_z;  //0x47
+			int16_t akm_x;
+			int16_t akm_y;
+			int16_t akm_z;
+		} mpu_akm_data_t;
+    #pragma pack(pop)
+
+	mpu_akm_data_t mpu_akm_data;
+
+	bool MPU9250_IsConnected();
+	uint8_t MPU9250_Init(uint8_t *id1, uint8_t *id2);
+	// sets the sample rate divider to values other than default
+	void MPU9250_SetSampleRateDivider(SampleRateDivider srd);
+	// sets the DLPF bandwidth to values other than default
+	void MPU9250_SetDLPFBandwidth(DLPFBandwidth bandwidth);
+	// sets the gyro full scale range to values other than default
+	void MPU9250_SetGyroRange(GyroRange range);
+	// sets the accelerometer full scale range to values other than default
+	void MPU9250_SetAccelRange(AccelRange range);
+	// read the data, each argiment should point to a array for x, y, and x
+	void MPU9250_GetData(mpu_akm_data_t *data);
+
+	uint8_t MPU9250_getStat();
+	void MPU9250_CalcAll(mpu_akm_data_t *data);
+
+
+#endif
+//******************************************************************************************
 
 #ifdef SET_BMx280
 
@@ -301,13 +383,14 @@
 		int8_t   dig_H6;
 	} bmx280_calib_t;
 
+	//result_t sensors;
 	info_bmp280_t info_bmp280;
 	uint8_t data_bmp280[25];
 
 	HAL_StatusTypeDef i2c_test_bmx280(info_bmp280_t *info_bmp280, uint8_t chip_id);
 	HAL_StatusTypeDef i2c_reset_bmx280(uint8_t *chip_id);
 	bool i2c_getStat_bmx280();
-#ifdef SET_COMPAS_BLOCK
+#if defined(SET_COMPAS) && defined(SET_COMPAS_BLOCK)
 	HAL_StatusTypeDef i2c_read_bmx280(uint8_t reg, uint8_t *data_rd, size_t size);
 	bool bmx280_readCalibrationData(uint8_t chip_id);
 #else

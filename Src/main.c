@@ -121,7 +121,9 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart1_tx;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 
@@ -146,8 +148,22 @@ volatile uint8_t setDate = 0;
 char rxData[MAX_TMP_SIZE] = {0};
 char rxByte = '\0';
 uint8_t rx_uk = 0;
-uint16_t rxBytes = 0;
+//uint16_t rxBytes = 0;
 char stx[MAX_TMP_SIZE] = {0};
+//
+#ifdef SET_BLE
+	UART_HandleTypeDef *blePort = &huart2;
+	char rxDataBLE[MAX_TMP_SIZE] = {0};
+	char rxByteBLE = '\0';
+	uint8_t rx_uk_ble = 0;
+	char stx_ble[MAX_TMP_SIZE] = {0};
+	volatile uint8_t txDoneFlagBLE = 1;
+	uint8_t ble_ack_wait = 0;
+	uint8_t con_ble = 0;
+	uint32_t tmr_ble_auth = 0;
+	uint8_t ble_auth = 0;
+#endif
+
 char tmp[MAX_UART_BUF] = {0};
 char txData[MAX_UART_BUF] = {0};
 volatile uint8_t txDoneFlag = 1;
@@ -189,6 +205,7 @@ uint8_t outDebug = 0;
 
 
 #ifdef SET_BMx280
+	result_t sensors = {0.0, 0.0, 0.0};
 	I2C_HandleTypeDef *portBMP = NULL;
 	uint8_t reg_id = 0;
 	uint8_t data_rdx[DATA_LENGTH] = {0};
@@ -219,12 +236,17 @@ uint32_t tmr_out = 0;
 uint32_t errStatCnt = 0;
 uint32_t cikl_out = _10s;
 
+uint32_t snd_pack = 0;
 
-#ifdef SET_MPU
+
+#if defined(SET_MPU6050) || defined(SET_MPU9250)
 	I2C_HandleTypeDef *portMPU = NULL;
 	uint32_t cntMPU = 0;
 	bool mpuPresent = false;
-	uint8_t mpuStatus;
+	uint8_t mpuStatus = 0;
+	uint8_t mpuInitErr = 1;
+	uint8_t mpuID = 0;//0x71
+	uint8_t akmID = 0;//0x48
 #endif
 
 
@@ -259,6 +281,15 @@ struct mallinfo mem_info;
 
 #endif
 
+#if defined(SET_NET) || defined(SET_WIFI)
+	uint8_t con_tcp = 0;
+	char localIP[32] = {0};
+	#ifdef SET_WIFI
+		char rxDataWIFI[MAX_TMP_SIZE] = {0};
+		char rxByteWIFI = '\0';
+		uint8_t rx_uk_wifi = 0;
+	#endif
+#endif
 
 #ifdef SET_NET
 	//#define HTTP_SOCKET     0
@@ -267,7 +298,6 @@ struct mallinfo mem_info;
 
 	//uint8_t gDATABUF[DATA_BUF_SIZE];
 
-	char localIP[32] = {0};
 	char netChipID[16] = {0};
 	int dhcpSOC = 0;
 	int udpSOC = 1;
@@ -282,7 +312,6 @@ struct mallinfo mem_info;
 	int mlen = 0;//sprintf(udpText, "Message from device=%s ip=%s\r\n", netChipID, localIP);
 	char tcpBuf[256] = {0};
 	char tcpTmp[128] = {0};
-	uint8_t con_tcp = 0;
 
 	int32_t cnt_udp = 0;
 	int32_t cnt_tcp = 0;
@@ -442,6 +471,7 @@ static void MX_SPI4_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_SPI2_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -453,6 +483,7 @@ static void MX_SPI2_Init(void);
 void led_OnOff()
 {
 	HAL_GPIO_TogglePin(tLED_GPIO_Port, tLED_Pin);
+	//HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 }
 //-------------------------------------------------------------------------------------------
 uint32_t getTimer(uint32_t t)
@@ -485,19 +516,14 @@ void putData(char *uk)
 	cnt_data++;
 
 	tmr_prn = getTimer(2);
-	//
-	//putMsg(msg_prnData);
+
 }
 //-------------------------------------------------------------------------------------------
 void printData()
 {
 
-	if (!cnt_data) return;
+	if (!cnt_data || !txDoneFlag) return;
 
-	if (!txDoneFlag) {
-		//putMsg(msg_prnData);
-		return;
-	}
 
 	char *uk = prndata[rd_data].body;
 	strcpy(txData, uk);
@@ -512,9 +538,26 @@ void printData()
 	//HAL_UART_Transmit(&huart1, (uint8_t *)txData, len, 1000);
 	HAL_UART_Transmit_DMA(&huart1, (uint8_t *)txData, len);
 
-#ifdef SET_NET
-	if (con_tcp) send(tcpSOC, (uint8_t *)&txData[0], len);
+#if defined(SET_NET)
+	if (con_tcp) {
+		send(tcpSOC, (uint8_t *)&txData[0], len);
+		snd_pack++;
+	}
+#elif defined(SET_WIFI)
+	if (con_tcp) {
+		WIFI_WriteBuff((uint8_t *)&txData[0], len);
+		//snd_pack++;
+	}
 #endif
+
+#ifdef SET_BLE
+	if (con_ble && ble_auth) {
+		bleCmd = iData;
+		bleWrite(bleCmd, txData);
+		snd_pack++;
+	}
+#endif
+
 
 }
 /**/
@@ -524,6 +567,7 @@ void putMsg(evt_t evt)
 	HAL_NVIC_DisableIRQ(TIM2_IRQn);
 	HAL_NVIC_DisableIRQ(USART1_IRQn);
 	HAL_NVIC_DisableIRQ(ADC_IRQn);
+	HAL_NVIC_DisableIRQ(USART2_IRQn);
 #ifndef SET_COMPAS_BLOCK
 	HAL_NVIC_DisableIRQ(I2C1_EV_IRQn);
 #endif
@@ -548,6 +592,7 @@ void putMsg(evt_t evt)
 #ifndef SET_COMPAS_BLOCK
 	HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
 #endif
+	HAL_NVIC_EnableIRQ(USART2_IRQn);
 	HAL_NVIC_EnableIRQ(ADC_IRQn);
 	HAL_NVIC_EnableIRQ(USART1_IRQn);
 	HAL_NVIC_EnableIRQ(TIM2_IRQn);
@@ -560,6 +605,7 @@ evt_t ret = msg_empty;
 	HAL_NVIC_DisableIRQ(TIM2_IRQn);
 	HAL_NVIC_DisableIRQ(USART1_IRQn);
 	HAL_NVIC_DisableIRQ(ADC_IRQn);
+	HAL_NVIC_DisableIRQ(USART2_IRQn);
 #ifndef SET_COMPAS_BLOCK
 	HAL_NVIC_DisableIRQ(I2C1_EV_IRQn);
 #endif
@@ -577,6 +623,7 @@ evt_t ret = msg_empty;
 #ifndef SET_COMPAS_BLOCK
 	HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
 #endif
+	HAL_NVIC_EnableIRQ(USART2_IRQn);
 	HAL_NVIC_EnableIRQ(ADC_IRQn);
 	HAL_NVIC_EnableIRQ(USART1_IRQn);
 	HAL_NVIC_EnableIRQ(TIM2_IRQn);
@@ -669,19 +716,40 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 			putMsg(msg_rxDone);
 		} else rx_uk++;
 
-		HAL_UART_Receive_IT(huart, (uint8_t *)&rxByte, 1);
+		HAL_UART_Receive_IT(&huart1, (uint8_t *)&rxByte, 1);
 
 	}
+#ifdef SET_BLE
+	else if (huart->Instance == USART2) {
+		rxDataBLE[rx_uk_ble & 0x7f] = rxByteBLE;
+		if (rxByteBLE == '\n') {//end of line
+			rxDataBLE[(rx_uk_ble + 1) & 0x7f] = '\0';
+			strcpy(stx_ble, rxDataBLE);//, rx_uk_ble + 1);
+
+			rx_uk_ble = 0;
+			memset(rxDataBLE, 0, sizeof(rxDataBLE));
+			putMsg(msg_rxDoneBLE);
+		} else rx_uk_ble++;
+
+		HAL_UART_Receive_IT(&huart2, (uint8_t *)&rxByteBLE, 1);
+
+	}
+#endif
+
 }
 //-----------------------------------------------------------------------------
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)// TX via DMA done !!!
 {
 	if (huart->Instance == USART1) txDoneFlag = 1;
+#ifdef SET_BLE
+	else
+	if (huart->Instance == USART2) txDoneFlagBLE = 1;
+#endif
 }
 //-----------------------------------------------------------------------------
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-	if (huart->Instance == USART1) devError |= devUART;
+	if ((huart->Instance == USART1) || (huart->Instance == USART1)) devError |= devUART;
 }
 //-----------------------------------------------------------------------------
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -690,9 +758,17 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		devError = devOK;
 		putMsg(msg_out);
 	}
-#ifdef SET_NET
+#if defined(SET_NET)
 	else if (GPIO_Pin == NET_EXTI4_Pin) {
 		net_cnt++;
+	}
+#elif defined(SET_BLE)
+	else if (GPIO_Pin == BLE_EXTI3_Pin) {
+		ble_stat = HAL_GPIO_ReadPin(BLE_EXTI3_GPIO_Port, BLE_EXTI3_Pin);
+	}
+#elif defined(SET_WIFI)
+	else if (GPIO_Pin == WIFI_BUSY_Pin) {
+		if (HAL_GPIO_ReadPin(WIFI_BUSY_GPIO_Port, WIFI_BUSY_Pin)) con_tcp = 0; else con_tcp = 1;
 	}
 #endif
 }
@@ -719,10 +795,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 #endif
 //-----------------------------------------------------------------------------
-#if defined(SET_OLED_SPI) || defined(SET_IPS)
+#if defined(SET_OLED_SPI) || defined(SET_IPS) || defined(SET_NET) || defined(SET_WIFI)
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
-	if (hspi->Instance == SPI2) {
+	if (hspi->Instance == SPI2) {//OLED or IPS display
 #if defined(SET_OLED_SPI)
 		if (withDMA) {
 			CS_OLED_DESELECT();
@@ -740,12 +816,25 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 		}
 		spi_cnt++;
 #endif
-	}
-#ifdef SET_NET
-	else if (hspi->Instance == SPI4) {
+	} else if (hspi->Instance == SPI4) {//NET or WIFI module
+#if defined(SET_NET)
 		//
-	}
+#elif defined(SET_WIFI)
+		if (!txDoneFlagWIFI) {
+			CS_NET_DESELECT();
+			txDoneFlagWIFI = 1;
+		}
 #endif
+	}
+}
+//-----------------------------------------------------------------------------
+void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+	if (hspi->Instance == SPI4) {
+#ifdef SET_WIFI
+		rxDoneFlagWIFI = 1;
+#endif
+	}
 }
 //-----------------------------------------------------------------------------
 void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
@@ -882,6 +971,7 @@ int8_t i;
     return VccValCounter;
 }
 //-------------------------------------------------------------------------------------------
+#ifdef SET_COMPAS
 uint8_t CompAddVal(float value)
 {
 int8_t i;
@@ -904,14 +994,21 @@ void procCompas()
 		if (COPMAS_GetAngle() != HAL_OK) devError |= devI2C1;
 	}
 }
+#endif
+//------------------------------------------------------------------------------------------
+
+#ifdef SET_MPU9250
+
+//------------------------------------------------------------------------------------------
+#endif
+
 //------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------
-//------------------------------------------------------------------------------------------
-void ackParse()
+void ackParse(char *st)
 {
 char *uk, *uke;
 
-	if ((uk = strstr(stx, "epoch=")) != NULL) {
+	if ((uk = strstr(st, "epoch=")) != NULL) {
 		uk += 6;
 		if (strlen(uk) >= 10) {
 			uke = strchr(uk, ':');
@@ -924,50 +1021,62 @@ char *uk, *uke;
 		}
 	}
 #ifdef SET_NET
-	else if (strstr(stx, "udp_on") != NULL) {
+	else if (strstr(st, "udp_on") != NULL) {
 		en_udp = 1;
-	} else if (strstr(stx, "udp_off") != NULL) {
+	} else if (strstr(st, "udp_off") != NULL) {
 		en_udp = 0;
 		if (usoc == udpSOC) close(udpSOC);
 		usoc = -1;
 		cnt_udp = 0;
 		udp_pack_num = 0;
-	} else if (strstr(stx, "tcp_on") != NULL) {
+	} else if (strstr(st, "tcp_on") != NULL) {
 		en_tcp = 1;
-	} else if (strstr(stx, "tcp_off") != NULL) {
+	} else if (strstr(st, "tcp_off") != NULL) {
 		en_tcp = 0;
 		if (tsoc == tcpSOC) close(tcpSOC);
 		tsoc = -1;
 		cnt_tcp = 0;
 		con_tcp = 0;
-	} else if (strstr(stx, "lan") != NULL) {
+	} else if (strstr(st, "lan") != NULL) {
 		getPhyStatus();
 	}
 #endif
-	else if (strstr(stx, "jtune_on") != NULL) {//key_100
+#ifdef SET_BLE
+	else if (strstr(st, "ble_mac") != NULL) {//key_7
+		bleCmd = iMAC;
+		putMsg(msg_wrBLE);
+	} else if (strstr(st, "ble_uuid") != NULL) {//key_8
+		bleCmd = iUUID;
+		putMsg(msg_wrBLE);
+	} else if (strstr(st, "ble_rst") != NULL) {//key_9
+		bleCmd = iRST;
+		putMsg(msg_wrBLE);
+	}
+#endif
+	else if (strstr(st, "jtune_on") != NULL) {//key_100
 		jtune = 1;
-	} else if (strstr(stx, "jtune_off") != NULL) {//key_200
+	} else if (strstr(st, "jtune_off") != NULL) {//key_200
 		jtune = 0;
 	}
 #ifdef SET_cJSON
-	else if (strstr(stx, "cjson") != NULL) {//key_2
+	else if (strstr(st, "cjson") != NULL) {//key_2
 		outMode = cjsonMode;
 	}
 #endif
-	else if (strstr(stx, "json") != NULL) {//key_1
+	else if (strstr(st, "json") != NULL) {//key_1
 		outMode = jsonMode;
-	} else if (strstr(stx, "text") != NULL) {//key_0
+	} else if (strstr(st, "text") != NULL) {//key_0
 		outMode = textMode;
 	}
-	else if (strstr(stx, "dbg_on") != NULL) {//key_3
+	else if (strstr(st, "dbg_on") != NULL) {//key_3
 		outDebug = 1;
-	} else if (strstr(stx, "dbg_off") != NULL) {//key_4
+	} else if (strstr(st, "dbg_off") != NULL) {//key_4
 		outDebug = 0;
-	} else if (strstr(stx, "get") != NULL) {//key_eq
+	} else if (strstr(st, "get") != NULL) {//key_eq
 		tmr_out = getTimer(_1ms);
-	} else if (strstr(stx, "rst") != NULL) {//key_ch
+	} else if (strstr(st, "rst") != NULL) {//key_ch
 		putMsg(msg_rst);
-	} else if ((uk = strstr(stx, "period=")) != NULL) {//key_minus : -100ms, key_plus : +100ms
+	} else if ((uk = strstr(st, "period=")) != NULL) {//key_minus : -100ms, key_plus : +100ms
 		int val = atoi(uk + 7);
 		if ((val > 0) && (val <= 30000)) cikl_out = val;
 	}
@@ -1006,6 +1115,7 @@ switch (outMode) {
 				cJSON_AddItemToObject(obj, bmxName, sens1);
 			} else devError |= devMem;
 #endif
+#ifdef SET_COMPAS
 			//
 			cJSON *sens2 = cJSON_CreateObject();
 			if (sens2) {
@@ -1013,7 +1123,9 @@ switch (outMode) {
 				cJSON_AddItemToObject(sens2, "temp2", cJSON_CreateNumber(compData.tempHMC));
 				cJSON_AddItemToObject(obj, "QMC5883L", sens2);
 			} else devError |= devMem;
+#endif
 			//
+#ifdef SET_MPU6050
 			cJSON *sens3 = cJSON_CreateObject();
 			if (sens3) {
 				cJSON_AddItemToObject(sens3, "stat", cJSON_CreateNumber(mpuStatus));
@@ -1034,6 +1146,7 @@ switch (outMode) {
 				} else devError |= devMem;
 				cJSON_AddItemToObject(obj, "MPU6050", sens3);
 			} else devError |= devMem;
+#endif
 			//
 			char *st = cJSON_PrintBuffered(obj, sizeof(tmp) - 1, jtune);
 			if (st) {
@@ -1064,9 +1177,11 @@ switch (outMode) {
 			if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), ",%s    \"humi\": %.2f", cr_lf, sensors.bmx_humi);
 			sprintf(tmp+strlen(tmp), "%s  }", cr_lf);
 #endif
+#ifdef SET_COMPAS
 			sprintf(tmp+strlen(tmp), ",%s  \"QMC5883L\": {%s    \"azimut\": %.2f,%s    \"temp2\": %.2f%s  }" ,
 					cr_lf, cr_lf, compData.angleHMC, cr_lf, compData.tempHMC, cr_lf);
-#ifdef SET_MPU
+#endif
+#ifdef SET_MPU6050
 			sprintf(tmp+strlen(tmp), ",%s  \"MPU6050\": {%s    \"stat\": %X,%s    \"temp3\": %.2f,%s    \"accel\": [%d,%d,%d],%s    \"gyro\": [%d,%d,%d]%s  }%s",
 							cr_lf, cr_lf,
 							mpuStatus, cr_lf,
@@ -1084,8 +1199,10 @@ switch (outMode) {
 			if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), ",\"humi\": %.2f", sensors.bmx_humi);
 			strcat(tmp, "}");
 #endif
+#ifdef SET_COMPAS
 			sprintf(tmp+strlen(tmp), ",\"QMC5883L\": {\"azimut\": %.2f,\"temp2\": %.2f}", compData.angleHMC, compData.tempHMC);
-#ifdef SET_MPU
+#endif
+#ifdef SET_MPU6050
 			sprintf(tmp+strlen(tmp), ",\"MPU6050\": {\"stat\": %X,\"temp3\": %.2f,\"accel\": [%d,%d,%d],\"gyro\": [%d,%d,%d]}",
 							mpuStatus,
 							mpu_data.TEMP,
@@ -1108,11 +1225,13 @@ switch (outMode) {
 								bmxName, sensors.bmx_pres, sensors.bmx_temp);
 		if (reg_id == BME280_SENSOR) sprintf(tmp+strlen(tmp), " humi=%.2f", sensors.bmx_humi);
 #endif
+#ifdef SET_COMPAS
 		//compas_stat_t *cStat = (compas_stat_t *)confRegHmc;
 		sprintf(tmp+strlen(tmp)," | QMC5883L: azimut=%.2f temp2=%.2f",
 			    			compData.angleHMC,
 							compData.tempHMC);
-#ifdef SET_MPU
+#endif
+#ifdef SET_MPU6050
 		sprintf(tmp+strlen(tmp)," | MPU6050: stat=%X temp3=%.2f accel=%d,%d,%d gyro=%d,%d,%d",
 							mpuStatus,
 							mpu_data.TEMP,
@@ -1152,9 +1271,25 @@ void toDisplay(char *line)
 	//if (mpuPresent) sprintf(line+strlen(line), " mpuTemp:%.2f%c\n", mpu_data.TEMP, gradus);
 	sprintf(line+strlen(line), "  pres:%.2fmm\n  temp:%.2f%c\n", sensors.bmx_pres, sensors.bmx_temp, gradus);
 	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "  humi:%.2f%%\n", sensors.bmx_humi);
-	sprintf(line+strlen(line), " azimut:%.2f%c\n", compData.angleHMC, gradus);
-	#ifdef SET_NET
+	#ifdef SET_MPU9250
+		if (!mpuInitErr) {
+			spi_ssd1306_clear_from_to(6, 8);
+			if (mpuStatus) sprintf(line+strlen(line), " mpuStat: 0x%02X\n azimut:%.2f%c\n temp:%.2f%c\n",
+					                    mpuStatus, compData.angleHMC, gradus, compData.tempHMC, gradus);
+		} else {
+			sprintf(line+strlen(line), "MPU not present\n");
+		}
+	#else
+		#ifdef SET_COMPAS
+			sprintf(line+strlen(line), " azimut:%.2f%c\n", compData.angleHMC, gradus);
+		#endif
+	#endif
+	#if defined(SET_NET)
 		if (ip_assigned) sprintf(line+strlen(line), " %s", localIP);
+	#elif defined(SET_BLE)
+		sprintf(line+strlen(line), " ble stat:%u", ble_stat);
+	#elif defined(SET_WIFI)
+		sprintf(line+strlen(line), " wifi ready : %u\n snd_pack : %u", con_tcp & 1, snd_pack);
 	#endif
 	spi_ssd1306_text_xy(line, 2, 2);
 #elif defined(SET_IPS)
@@ -1167,9 +1302,22 @@ void toDisplay(char *line)
 	}
 	sprintf(line+strlen(line), "   pres:%.2fmm\n   temp:%.2f^\n", sensors.bmx_pres, sensors.bmx_temp);
 	if (reg_id == BME280_SENSOR) sprintf(line+strlen(line), "   humi:%.2f%%\n", sensors.bmx_humi);
-	sprintf(line+strlen(line), "   azimut:%.2f^\n   temp2:%.2f^\n", compData.angleHMC, compData.tempHMC);
+	#ifdef SET_MPU9250
+		if (!mpuInitErr)
+			sprintf(line+strlen(line), "MPU9250 present\n mpuStat: 0x%02X\na:%.2f%c t:%.2f%c\n",
+								       mpuStatus, compData.angleHMC, gradus, compData.tempHMC, gradus);
+		else
+			sprintf(line+strlen(line), "MPU not present\n");
+	#else
+		#ifdef SET_COMPAS
+			sprintf(line+strlen(line), "   azimut:%.2f^\n   temp2:%.2f^\n", compData.angleHMC, compData.tempHMC);
+		#endif
+	#endif
 	#ifdef SET_NET
 		if (ip_assigned) sprintf(line+strlen(line), "%s | %d", localIP, (int)cnt_udp);
+	#endif
+	#ifdef SET_BLE
+		sprintf(line+strlen(line), " ble stat:%u", ble_stat);
 	#endif
 	ST7789_WriteString(0, tFont->height + (tFont->height * 0.75), line, *tFont, WHITE, BLACK);
 #endif
@@ -1216,6 +1364,7 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM4_Init();
   MX_SPI2_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
 
@@ -1232,6 +1381,15 @@ int main(void)
     //"start" rx_interrupt
 	HAL_UART_Receive_IT(&huart1, (uint8_t *)&rxByte, 1);
 
+#ifdef SET_BLE
+	//"start" rx_interrupt
+	HAL_UART_Receive_IT(&huart2, (uint8_t *)&rxByteBLE, 1);
+#endif
+#ifdef SET_WIFI
+	//HAL_SPI_Receive_DMA(&hspi4, (uint8_t *)&rxByteWIFI, 1);
+	//WIFI_WriteBuff(uint8_t* buff, uint16_t len);
+#endif
+
 
 	evt_t evt;
 	uint32_t schMS = 0;
@@ -1239,6 +1397,7 @@ int main(void)
 
 	ON_ERR_LED();//!!!!!!!!!!!!!!!!!!!!!
 	STROB_UP();//!!!!!!!!!!!!!!!!!!!!!
+
 
 #if defined(SET_OLED_SPI) || defined(SET_IPS)
 	portOLED = &hspi2;
@@ -1283,19 +1442,25 @@ int main(void)
     }
 
     //bmxCalibr = bmx280_readCalibrationData(reg_id);
-
 #endif
 
-#ifdef SET_MPU
+#ifdef SET_MPU9250
     portMPU = &hi2c1;
-    if (mpuID() == HAL_OK) {
-    	if (mpuInit() == HAL_OK) {
-    		mpuPresent = true;
-    		mpuDisableInterrupts();
-    	}
+    mpuPresent = MPU9250_IsConnected();
+    if (mpuPresent) {
+    	mpuInitErr = MPU9250_Init(&mpuID, &akmID);
     }
+#else
+	#ifdef SET_MPU6050
+    	portMPU = &hi2c1;
+    	if (mpuChipID() == HAL_OK) {
+    		if (mpuInit() == HAL_OK) {
+    			mpuPresent = true;
+    			mpuDisableInterrupts();
+    		}
+    	}
+	#endif
 #endif
-
 
 #ifdef SET_NET
 
@@ -1353,7 +1518,8 @@ int main(void)
 
 
 #ifdef SET_IRED
-    HAL_GPIO_WritePin(irLED_GPIO_Port, irLED_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(irLED_GPIO_Port, irLED_Pin, GPIO_PIN_SET);
+    //IRRED_LED();
 	uint32_t tmr_ired = 0;
 	enIntIRED();
 #endif
@@ -1369,19 +1535,30 @@ int main(void)
     //
     //---------------------------------------
 
-
+#ifdef SET_COMPAS
 	portHMC = &hi2c1;
 	xyz = (xyz_t *)&magBuf[0];
 //	COPMAS_Reset();
 	COPMAS_Init();
 	cStat = COPMAS_ReadStat();
-#ifdef SET_COMPAS_BLOCK
-    siCmd = msg_empty;
-    evt = msg_startCompas;
+	#ifdef SET_COMPAS_BLOCK
+    	siCmd = msg_empty;
+    	evt = msg_startCompas;
+	#else
+    	siCmd = msg_startCompas;
+    	evt = msg_i2c;
+    	next = getTimer(_100ms);
+	#endif
 #else
-    siCmd = msg_startCompas;
-    evt = msg_i2c;
-    next = getTimer(_100ms);
+	#if defined(SET_MPU9250)
+    	siCmd = msg_empty;
+    	evt = msg_startMPU;
+    	next = getTimer(_100ms);
+	#elif defined(SET_BMx280)
+    	siCmd = msg_empty;
+    	evt = msg_nextSens;
+    	next = getTimer(_100ms);
+	#endif
 #endif
 
     tmr_out = getTimer(_1s);
@@ -1391,18 +1568,24 @@ int main(void)
     putMsg(evt);
 
 
-#ifdef SET_NET
-
-    //getPhyStatus();
-
+#if defined(SET_NET)
     en_udp = 1;
     if (usoc < 0) putMsg(msg_mkUdp);
     HAL_Delay(10);
     en_tcp = 1;
     if (tsoc < 0) putMsg(msg_mkTcp);
+#elif defined(SET_BLE)
+    bleReset(0);//hard reset
 
+    //bleSpeed();//set speed to 115200
+    ble_auth = 0;
+    tmr_ble_auth = 0;
+#elif defined(SET_WIFI)
+    if (HAL_GPIO_ReadPin(WIFI_BUSY_GPIO_Port, WIFI_BUSY_Pin)) con_tcp = 0; else con_tcp = 1;
 #endif
 
+    uint8_t first_sec = 0;
+    //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
   /* USER CODE END 2 */
 
@@ -1454,7 +1637,17 @@ int main(void)
 
 						case key_3: outDebug = 1; break;//dbg_on
 						case key_4: outDebug = 0; break;//dbg_off
-
+#ifdef SET_BLE
+						case key_7:
+							bleCmd = iMAC;
+							putMsg(msg_wrBLE);
+						break;
+						case key_8:
+							bleCmd = iUUID;
+							putMsg(msg_wrBLE);
+						break;
+						case key_9: bleReset(0); break;
+#endif
 						case key_ch: putMsg(msg_rst); break;//rst
 
 						case key_eq: tmr_out = getTimer(_1ms); break;//out
@@ -1508,13 +1701,17 @@ int main(void)
 			tmr_prn = getTimer(2);
 		}
 
+#ifdef SET_BLE
+		if (tmr_ble_auth) {
+			if (chkTimer(tmr_ble_auth)) {
+				tmr_ble_auth = 0;
+				bleDisconnect();
+			}
+		}
+#endif
+
 		switch (getMsg()) {
 
-			//case msg_prnData:
-				//
-			//	printData();
-				//
-			//break;
 #ifdef SET_NET
 			case msg_mkUdp:
 				if (usoc < 0) {
@@ -1648,6 +1845,11 @@ int main(void)
 		    case msg_sec:
 		    	led_OnOff();
 		    	//
+		    	if (!first_sec) {
+		    		first_sec = 1;
+		    		set_Date((time_t)(epoch + 1));
+		    	}
+		    	//
 #if defined(SET_OLED_SPI) || defined(SET_IPS)
 		    	sec_to_str_time(line);
 #endif
@@ -1705,9 +1907,52 @@ int main(void)
 		    break;
 			case msg_rxDone:
 				Report(NULL, 0, stx);
-				ackParse();
+				ackParse(stx);
 			break;
+#ifdef SET_BLE
+			case msg_wrBLE:
+				bleWrite(bleCmd, NULL);
+			break;
+			case msg_rxDoneBLE:
+			{
+				//
+				switch (bleAckParse(stx_ble)) {
+					case ackCON:
+						con_ble = 1;
+						//tmr_ble_auth = getTimer(_5s);
+tmr_ble_auth = 0;
+ble_auth = 1;
+					break;
+					case ackPWD:
+						tmr_ble_auth = 0;
+						ble_auth = 1;
+					break;
+					case ackDISC:
+						con_ble = ble_auth = 0;
+						tmr_ble_auth = 0;
+					break;
+					default : ackParse(stx_ble);
+				}
+				//
+				if (ble_ack_wait) ble_ack_wait = 0;
+				Report(NULL, 0, stx_ble);
+	#ifdef SET_OLED_SPI
+				spi_ssd1306_clear_line(8);
+				stx_ble[15] = '\0';
+				uint8_t x = spi_ssd1306_calcx(strlen(stx_ble));
+				spi_ssd1306_text_xy(stx_ble, x, 8);
+	#endif
+	#ifdef SET_IPS
+				strcpy(line, stx_ble);
+		    	ST7789_WriteString(0, ST7789_WIDTH - fntKey->height, mkLineCenter(line, ST7789_WIDTH / fntKey->width), *fntKey, MAGENTA, YELLOW);
+	#endif
+			}
+			break;
+#endif
 			case msg_rst:
+#ifdef SET_BLE
+				bleDisconnect();
+#endif
 				HAL_Delay(800);
 				NVIC_SystemReset();
 			break;
@@ -1720,6 +1965,7 @@ int main(void)
 #ifndef SET_COMPAS_BLOCK
 			case msg_i2c:
 				switch (siCmd) {
+#ifdef SET_COMPAS
 					case msg_startCompas:
 						if (chkTimer(next)) {
 							//
@@ -1747,34 +1993,47 @@ int main(void)
 						putMsg(msg_nextSens);
 						//
 					break;
+#endif
 					case msg_rdyTest:
 						//
-						i2c_test_ready_bmx280(&info_bmp280);
+						if (chkTimer(next)) {
+							i2c_test_ready_bmx280(&info_bmp280);
+							next = 0;//getTimer(_5ms);
+						} else {
+							siCmd = msg_rdyTest;
+							putMsg(msg_i2c);
+						}
 						//
 					break;
 					case msg_rdyStat:
-						bStat = i2c_getStat_bmx280();
-						if (!bStat) {
-							errStatCnt++;
-							if (errStatCnt < 10) {
-								siCmd = msg_rdyTest;
-								putMsg(msg_i2c);
-							} else {
-								devError |= devI2C1;
-								errStatCnt = 0;
+						//if (chkTimer(next)) {
+						//	next = 0;
+							bStat = i2c_getStat_bmx280();
+							if (!bStat) {
+								errStatCnt++;
+								if (errStatCnt < 10) {
+									siCmd = msg_rdyTest;
+									putMsg(msg_i2c);
+								} else {
+									devError |= devI2C1;
+									errStatCnt = 0;
+								}
+								break;
 							}
-							break;
-						}
-						//
-						if (i2c_read_data_bmx280(data_rdx, d_size) != HAL_OK) devError |= devI2C1;
-						//
+							//
+							if (i2c_read_data_bmx280(data_rdx, d_size) != HAL_OK) devError |= devI2C1;
+							//
+						//} else {
+						//	siCmd = msg_rdyStat;
+						//	putMsg(msg_i2c);
+						//}
 					break;
 					case msg_readBMX:
 						//
 						if (!bmxCalibr) bmx280_readCalibr1Data(reg_id);//goto read calibration data part 1
 						else {
 							bmx280_CalcAll(&sensors, reg_id);
-#ifdef SET_MPU
+#ifdef SET_MPU6050
 							if (mpuPresent) {
 								//
 	#ifdef SET_MPU_INTERRUPT
@@ -1797,7 +2056,7 @@ int main(void)
 							bmx280_readCalibr2Data(reg_id);
 						} else {
 							bmx280_CalcAll(&sensors, reg_id);
-#ifdef SET_MPU
+#ifdef SET_MPU6050
 							if (mpuPresent) {
 								siCmd = msg_mpuAllRead;
 								putMsg(msg_i2c);
@@ -1813,7 +2072,7 @@ int main(void)
 						if (reg_id == BME280_SENSOR) bmx280_calcCalibr2Data();
 						bmx280_CalcAll(&sensors, reg_id);
 						bmxCalibr = true;
-#ifdef SET_MPU
+#ifdef SET_MPU6050
 						if (mpuPresent) {
 							//
 	#ifdef SET_MPU_INTERRUPT
@@ -1828,7 +2087,7 @@ int main(void)
 #endif
 						//
 					break;
-#ifdef SET_MPU
+#ifdef SET_MPU6050
 					case msg_mpuAllRead:
 						//
 	#ifndef SET_MPU_INTERRUPT
@@ -1845,7 +2104,7 @@ int main(void)
 						putMsg(msg_endNext);
 						//
 					break;
-#endif
+	#endif
 				}
 			break;
 #else
@@ -1873,6 +2132,24 @@ int main(void)
 			}
 			break;
 #endif
+#ifdef SET_MPU9250
+			case msg_startMPU:
+				if (chkTimer(next)) {
+					//STROB_DOWN();
+					//
+					mpuStatus = MPU9250_getStat();
+					if (mpuStatus) {
+						MPU9250_GetData(&mpu_akm_data);
+						MPU9250_CalcAll(&mpu_akm_data);
+					}
+					//
+					next = 0;//getTimer(_1ms);
+					putMsg(msg_nextSens);
+					//
+					//STROB_UP();
+				} else putMsg(msg_startMPU);
+			break;
+#endif
 			case msg_nextSens:
 				if (chkTimer(next)) {
 					//STROB_DOWN();
@@ -1880,7 +2157,7 @@ int main(void)
 #ifdef SET_BMx280
 					//
 					if (i2c_test_bmx280(&info_bmp280, reg_id) != HAL_OK) devError |= devI2C1;
-					//next = getTimer(_1ms);
+					next = getTimer(_1ms);
 	#ifdef SET_COMPAS_BLOCK
 					bStat = i2c_getStat_bmx280();
 					if (!bStat) {
@@ -1915,12 +2192,22 @@ int main(void)
 				if (!msCnt) msCnt++;
 				next = getTimer(msCnt);
 				//
-#ifdef SET_COMPAS_BLOCK
+#ifdef SET_COMPAS
+	#ifdef SET_COMPAS_BLOCK
 				evt = msg_startCompas;
 				siCmd = msg_empty;
-#else
+	#else
 				evt = msg_i2c;
 				siCmd = msg_startCompas;
+	#endif
+#else
+	#if defined(SET_MPU9250)
+				evt = msg_startMPU;
+				siCmd = msg_empty;
+	#elif defined(SET_BMx280)
+				evt = msg_nextSens;
+				siCmd = msg_empty;
+	#endif
 #endif
 				putMsg(evt);
 				//
@@ -2027,7 +2314,7 @@ static void MX_ADC1_Init(void)
   }
   /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
   */
-  sConfig.Channel = ADC_CHANNEL_2;
+  sConfig.Channel = ADC_CHANNEL_6;
   sConfig.Rank = 1;
   sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
@@ -2191,6 +2478,7 @@ static void MX_SPI4_Init(void)
   /* USER CODE END SPI4_Init 0 */
 
   /* USER CODE BEGIN SPI4_Init 1 */
+	//-------- SPI for NET or WIFI -----------
 	// for 100 MHz clock : for W5500 internet port
 	// _2 - 50MHz
 	// _4 - 25MHz
@@ -2337,7 +2625,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 230400;//115200;
+  huart1.Init.BaudRate = 230400;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -2351,6 +2639,39 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
 
 }
 
@@ -2374,6 +2695,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream4_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
+  /* DMA1_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 3, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
   /* DMA2_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 3, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
@@ -2406,10 +2730,11 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|NET_CS_Pin
-                          |NET_RST_Pin|STROB_Pin, GPIO_PIN_SET);
+                          |NET_RST_Pin|BLE_RST_Pin|STROB_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, tLED_Pin|ERR_LED_Pin, GPIO_PIN_RESET);
+
 
   /*Configure GPIO pin : irLED_Pin */
   GPIO_InitStruct.Pin = irLED_Pin;
@@ -2430,6 +2755,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(IRED_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : WIFI_BUSY_Pin */
+  GPIO_InitStruct.Pin = WIFI_BUSY_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(WIFI_BUSY_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pins : OLED_DC_Pin OLED_RST_Pin OLED_CS_Pin NET_CS_Pin
                            NET_RST_Pin ERR_LED_Pin STROB_Pin */
   GPIO_InitStruct.Pin = OLED_DC_Pin|OLED_RST_Pin|OLED_CS_Pin|NET_CS_Pin
@@ -2439,19 +2770,46 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : BLE_EXTI3_Pin */
+  GPIO_InitStruct.Pin = BLE_EXTI3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(BLE_EXTI3_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : BLE_RST_Pin */
+  GPIO_InitStruct.Pin = BLE_RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
+  HAL_GPIO_Init(BLE_RST_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : tLED_Pin */
   GPIO_InitStruct.Pin = tLED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(tLED_GPIO_Port, &GPIO_InitStruct);
+  /*
+  	GPIO_InitStruct.Pin = GPIO_PIN_13;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+  */
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 4, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 3, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
   HAL_NVIC_SetPriority(EXTI4_IRQn, 4, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 3, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 

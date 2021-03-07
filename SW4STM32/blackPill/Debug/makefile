@@ -25,6 +25,7 @@ RM := rm -rf
 -include Application/User/NET/DNS/subdir.mk
 -include Application/User/NET/DHCP/subdir.mk
 -include Application/User/NET/subdir.mk
+-include Application/User/BLE/subdir.mk
 -include Application/User/subdir.mk
 -include Application/SW4STM32/subdir.mk
 -include subdir.mk
